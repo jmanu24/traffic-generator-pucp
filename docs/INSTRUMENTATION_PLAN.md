@@ -47,9 +47,10 @@ evaluar si el código asociado sigue usándose en producción:
   `docs/OPTIMIZATION_VALIDATION.md` + `.json`,
   `docs/WORKSTATION_WIFI_MIGRATION.md` (ya no aplica, VM migrada),
   `docs/WORKSTATION_MIGRATION_VALIDATION.json`.
-- `benign_lab/burst_variants.py` — revisar si algún escenario de los 10
-  puntos todavía lo necesita; si no, retirar junto con su endpoint
-  `/api/burst-pilot/*`.
+- ~~`benign_lab/burst_variants.py`~~ — **retirado** (Fase 0): los endpoints
+  `/api/burst-pilot/*` ya devolvían 409 "Piloto retirado" en el código; se
+  eliminó el módulo, los tres endpoints y `tests/test_burst_variants.py`.
+  El frontend ya no lo referenciaba.
 - Revisar si `clock_sync.py` sigue siendo necesario fuera de la ejecución
   (si ya está integrado al arranque coordinado, no hace falta exponerlo
   como feature aparte).
