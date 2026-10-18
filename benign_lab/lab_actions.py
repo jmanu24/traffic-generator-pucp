@@ -16,6 +16,20 @@ from pathlib import Path
 
 ISP_DDOS_RYU = Path('/home/ubuntu/isp-ddos-ryu')
 VM_LAB = ISP_DDOS_RYU / 'deploy/vm-lab'
+
+# This repo's domain names (benign_lab.planner.DOMAINS: mobile/fixed/
+# enterprise/peering) vs. vmlab_common.inventory's ROLE_TO_DOMAIN labels for
+# the same two domains (broadband/bgp) -- same nodes, different vocabulary
+# between the two repositories. Only inventory.nodes_by_domain() needs the
+# translation; the Ansible reconnect playbooks are already named
+# fixed/peering, matching this repo.
+DOMAIN_ALIASES = {'fixed': 'broadband', 'peering': 'bgp'}
+
+
+def _inventory_domain(domain):
+    return DOMAIN_ALIASES.get(domain, domain)
+
+
 RECONNECT_PLAYBOOKS = {
     'mobile': 'reconnect_mobile_domain.yml',
     'fixed': 'reconnect_fixed_domain.yml',
@@ -44,7 +58,7 @@ def power_states():
 def power_domain(domain, on):
     """Power every VM in a domain on/off. Returns {vm_name: ok}."""
     govc_ops, inventory, _ = _vmlab_common()
-    nodes = inventory.nodes_by_domain(domain)
+    nodes = inventory.nodes_by_domain(_inventory_domain(domain))
     if not nodes:
         raise ValueError(f'Unknown or empty domain: {domain}')
     return {node.name: govc_ops.power(node.name, on) for node in nodes}
@@ -56,7 +70,7 @@ def connectivity_check(domain, command='echo ok'):
     the result, not raised, so it never hides the state of the rest of the
     domain."""
     _, inventory, ssh_ops = _vmlab_common()
-    nodes = inventory.nodes_by_domain(domain)
+    nodes = inventory.nodes_by_domain(_inventory_domain(domain))
     if not nodes:
         raise ValueError(f'Unknown or empty domain: {domain}')
     results = {}

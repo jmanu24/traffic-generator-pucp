@@ -58,3 +58,20 @@ def test_connectivity_check_reads_the_real_sshresult_rc_field(monkeypatch):
     results = lab_actions.connectivity_check('mobile')
     assert results['n1']['ok'] is True
     assert results['n2']['ok'] is False
+
+
+@pytest.mark.parametrize('our_name,their_name', [('fixed', 'broadband'), ('peering', 'bgp'), ('mobile', 'mobile')])
+def test_domain_names_are_translated_to_vmlab_commons_vocabulary(monkeypatch, our_name, their_name):
+    """traffic-generator-pucp calls these domains fixed/peering;
+    vmlab_common.inventory.ROLE_TO_DOMAIN calls the same nodes
+    broadband/bgp. A live run against the real lab showed 0 nodes for
+    fixed/peering because of this, not missing data; this pins the fix."""
+    seen = {}
+    def nodes_by_domain(d):
+        seen['domain'] = d
+        return [_FakeNode('n1')]
+    fake_inventory = type('M', (), {'nodes_by_domain': staticmethod(nodes_by_domain)})
+    fake_ssh_ops = type('M', (), {'run': staticmethod(lambda name, cmd: _FakeSshResult(0, stdout='ok'))})
+    monkeypatch.setattr(lab_actions, '_vmlab_common', lambda: (None, fake_inventory, fake_ssh_ops))
+    lab_actions.connectivity_check(our_name)
+    assert seen['domain'] == their_name

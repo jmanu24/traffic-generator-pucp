@@ -148,14 +148,8 @@ actuación reales viven ahora en `deploy/vm-lab/vmlab_common/` (`govc_ops`,
 `vmlab_common`, no reimplementar.** `benign_lab/lab_actions.py`:
 `power_states()`, `power_domain(domain, on)`, `connectivity_check(domain,
 command)`, `recover_domain(domain)` (dispara los playbooks Ansible
-`reconnect_{mobile,fixed,peering}_domain.yml` ya validados). 5 pruebas
-(las que no tocan red pasan siempre; las que sí, se saltan si no hay
-checkout de `isp-ddos-ryu` al lado). **Hallazgo durante la prueba, no un bug
-de esta herramienta:** `vmlab_common.inventory.nodes_by_domain()` devuelve
-0 nodos para `fixed` y `peering` en el estado actual (no commiteado) de
-`isp-ddos-ryu` — ese repo está a mitad de una reorganización de inventario;
-`lab_actions.py` ya falla con un `ValueError` claro en ese caso en vez de
-silenciarlo. No hay playbook de reconexión para `enterprise` todavía.
+`reconnect_{mobile,fixed,peering}_domain.yml` ya validados). No hay
+playbook de reconexión para `enterprise` todavía.
 
 **Validado en vivo el 2026-10-18** (este mismo control node, 192.168.18.154,
 es el que corre `benign-lab-web.service`; sin experimento activo en ese
@@ -167,8 +161,18 @@ momento — `data/runs/` vacío):
   usa `.rc` — la prueba en vivo marcaba `ok=False` en nodos que en realidad
   respondían bien. Corregido, con una prueba unitaria nueva que fija el
   nombre real del campo para que no vuelva a pasar inadvertido.
-- Confirmado en vivo (no solo en el `inventory.py` leído antes): `fixed` y
-  `peering` siguen devolviendo 0 nodos.
+- **Segundo hallazgo, no es un bug de inventario, es vocabulario distinto
+  entre repos:** `fixed`/`peering` (nombres de `benign_lab.planner.DOMAINS`)
+  no son `0 nodos` en `isp-ddos-ryu` — ese repo llama a esos mismos dominios
+  `broadband`/`bgp` (`vmlab_common.inventory.ROLE_TO_DOMAIN`). Confirmado:
+  `nodes_by_domain('broadband')` → `bng`, `suscriptor`;
+  `nodes_by_domain('bgp')` → `br`, `peer-router`, `peer-router-2`, todos
+  responden. Corregido con `lab_actions.DOMAIN_ALIASES = {'fixed':
+  'broadband', 'peering': 'bgp'}`, aplicado solo donde se llama a
+  `nodes_by_domain` (los playbooks de reconexión ya se llaman
+  `fixed`/`peering`, no hacía falta tocarlos). 9 pruebas en total (las que
+  no tocan red pasan siempre; las que sí, se saltan si no hay checkout de
+  `isp-ddos-ryu` al lado).
 - `scripts/capacity_probe.py path` contra `10.55.0.100` desde este control
   host: 100% pérdida — **esperado**, el control host está en la red de
   gestión (10.10.0.x), sin ruta al plano de datos de la víctima
@@ -314,9 +318,11 @@ código a ciegas:**
 3. Con datos reales de falsos positivos, correr
    `threshold_recommendation.recommend_thresholds()` y aplicar con
    `ThresholdControl.apply()` (Fase 4).
-4. Arreglar (en `isp-ddos-ryu`, no aquí) que `nodes_by_domain('fixed')` y
-   `('peering')` devuelven 0 nodos ahora mismo, antes de que `lab_actions.py`
-   pueda operar sobre esos dos dominios (Fase 5).
+4. ~~Arreglar que `nodes_by_domain('fixed')`/`('peering')` devuelven 0
+   nodos~~ — **resuelto:** no era un dato faltante, era vocabulario distinto
+   entre repos (`fixed`/`peering` aquí vs. `broadband`/`bgp` en
+   `isp-ddos-ryu`); `lab_actions.DOMAIN_ALIASES` lo traduce, validado en
+   vivo contra los 5 nodos reales de ambos dominios (Fase 5).
 5. Confirmar el formato real de telemetría de Peering (nfcapd) y Mobile
    (KPM/E2) para escribirles un adaptador `from_mapping(...)` en
    `domain_telemetry.py` (Fase 6).
