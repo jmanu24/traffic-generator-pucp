@@ -80,61 +80,102 @@ una lista propuesta, no una ejecución.
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-## 4. Roadmap por fases
+## 4. Roadmap por fases — estado al 2026-10-18
 
-**Fase 0 — Poda (1 sesión corta)**
-Archivar los docs listados en §2, confirmar contigo caso por caso el
-código candidato a retirar (`burst_variants.py` y su endpoint). Sin esto,
-cada fase siguiente arrastra más superficie de la necesaria.
+Todo lo marcado "implementado" está en el working tree de
+`traffic-generator-pucp`, probado en este entorno (sin acceso al
+laboratorio real salvo donde se indica), y pendiente de tu decisión sobre
+cuándo commitear/pushear. Nada de esto se ha validado todavía contra las
+23 VMs reales.
 
-**Fase 1 — Cerrar medición de capacidad (#1)**
-Extender `calibrate_capacity.py`/`capacity_probe.py` para registrar, por
-dominio, no solo goodput sino delay (RTT), jitter y pérdida de paquetes
-(usar los agentes ya desplegados o ping/UDP con secuencia para pérdida).
-Persistir junto a lo que ya guarda `CAPACITY_MEASUREMENTS.json`.
+**Fase 0 — Poda — completa (commiteada y pusheada: `f48aafc`, `ada5efd`)**
+Docs de pilotos archivados, `burst_variants.py` y su endpoint retirados.
+
+**Fase 1 — Cerrar medición de capacidad (#1) — código añadido, no validado en el lab**
+`scripts/capacity_probe.py`: nuevo modo `path` (RTT min/avg/max, jitter
+`mdev`, % pérdida vía `ping`, reutilizando el mismo patrón ICMP que ya usa
+`agent.py` — sin hping3). Probado localmente contra `127.0.0.1` y contra una
+IP inalcanzable (100 % pérdida parseada correctamente).
+`scripts/calibrate_capacity.py`: paso aditivo por dominio que llama al modo
+`path` desde cada cliente y agrega `report['path_quality'][domain]`
+(pérdida/RTT/jitter medios y máximos); envuelto en `try/except` para que un
+fallo en la medición de latencia **nunca** aborte la campaña de throughput
+ya validada. No toca la lógica existente de capacidad/firewall/mitigación.
+**Pendiente:** correr en el nodo orquestador contra el laboratorio real.
 
 **Fase 2 — Tamaño de muestra con rigor estadístico (#2) — implementada y probada**
 `benign_lab/sample_size.py`: `required_seeds(sd, precision)` (exacta,
-iterativa, basada en `T975` de `experimental_analytics.py`, no en la
-aproximación normal que ya traía `additional_seeds_precision_approx`), y
-`plan_sample_size(calibration, precision_by_metric)` que, dado un
-diccionario de variabilidad por métrica (throughput/delay/jitter/pérdida de
-la Fase 1), calcula el número de semillas que exige la métrica más
-demandante — todas las métricas deben cumplir su precisión objetivo a la
-vez. 5 pruebas unitarias pasan. Falta conectarlo con datos reales de
-calibración (Fase 1 en el laboratorio) y con `scenario_series.py` (Fase 3).
+iterativa, basada en `T975` de `experimental_analytics.py`), y
+`plan_sample_size(calibration, precision_by_metric)`, que dado
+`{métrica: {mean, sd}}` (lo que produce la Fase 1) devuelve el número de
+semillas que exige la métrica más demandante. 5 pruebas unitarias.
 
-**Fase 3 — Generación y ejecución dirigidas por el tamaño de muestra (#3, #4)**
-Parametrizar `scenario_series.py`/`/api/scenario-series/*` para que el
-número de semillas/corridas venga de la Fase 2 en vez de estar fijo a 18.
-`planner.py` no cambia de contrato, solo cómo se invoca.
+**Fase 3 — Ejecución dirigida por el tamaño de muestra y ataques internos (#3, #4) — parcial**
+`benign_lab/scenario_series.interleaved_order(seeds, repeats_per_seed)`:
+generaliza el diseño fijo de 3 semillas/18 corridas (hoy hardcoded en
+`api.py:comparison_steps`, con 3 hashes de plan fijos) a cualquier número de
+semillas mediante un Latin square balanceado (cada semilla aparece una vez
+en cada posición relativa de la campaña — la propiedad que importa
+metodológicamente, no la permutación exhaustiva, que solo es práctica para
+n pequeño). 4 pruebas unitarias. **Pendiente (requiere el laboratorio
+real):** sustituir el orden fijo de `comparison_steps()` por esta función
+alimentada por `sample_size.plan_sample_size()`, lo que exige tener N planes
+calibrados reales en el nodo orquestador, no solo 3. El requisito #11
+(generación de ataques, ver §5) ya da la pieza para que el disparo del
+ataque dentro de un escenario deje de ser manual; conectarla a
+`scenario_series`/`api.py`/`runner.Manager` para que quede 100% automática
+es el siguiente incremento, documentado también en §5.
 
-**Fase 4 — Umbrales por dominio y multidominio desde la calibración (#5)**
-Extender `threshold_control.py` para sugerir umbrales a partir de la
-capacidad medida (Fase 1) y de los resultados de falsos positivos
-(`FALSE_POSITIVES_CALIBRATION.md`), y para fijar/registrar un umbral o
-regla multidominio explícita (hoy el control es por dominio).
+**Fase 4 — Umbrales por dominio y multidominio desde la calibración (#5) — recomendación implementada, aplicación sin tocar**
+`benign_lab/threshold_recommendation.py`: `recommend_thresholds(baseline_pps_by_domain, margin, dist_margin)`,
+función pura (sin SSH, sin tocar el controlador en vivo) que sugiere
+`SYN_THRESHOLD`/`UDP_THRESHOLD`/`ICMP_THRESHOLD` a partir del pico de
+dominio más alto, y `DIST_PPS_THRESHOLD` (el campo que ya existe para el
+caso multidominio distribuido) a partir de la suma de líneas base de todos
+los dominios. 5 pruebas unitarias. El operador revisa la sugerencia y la
+aplica con `ThresholdControl.apply()`, que no se tocó. **Limitación real,
+no de esta herramienta:** `SYN_THRESHOLD`/`UDP_THRESHOLD`/`ICMP_THRESHOLD`/
+`DECISION_THRESHOLD` son escalares globales en el controlador desplegado
+(`isp-ddos-ryu`), no uno por dominio; un umbral por dominio de verdad
+requiere un cambio del lado del controlador, fuera de este repositorio.
 
-**Fase 5 — Capa de acciones sobre el laboratorio (#7)**
-La pieza nueva más grande. Definir si se integra como cliente del
-`webtool` de `isp-ddos-ryu` (llamando su API) o si se replican acciones
-mínimas (power on/off por VM/dominio, prueba de conectividad, disparo de
-los playbooks de recuperación) directamente desde BENIGN-LAB. Recomendado:
-**envolver el webtool/Ansible existente**, no reimplementar el control de
-VMware/accel-ppp/FlexRIC que ya está validado en `isp-ddos-ryu`.
+**Fase 5 — Capa de acciones sobre el laboratorio (#7) — implementada, decisión ya tomada**
+Investigué `isp-ddos-ryu`: el antiguo `webtool` (puerto 8070) fue retirado
+(working tree de `isp-ddos-ryu` en plena refactorización); sus primitivas de
+actuación reales viven ahora en `deploy/vm-lab/vmlab_common/` (`govc_ops`,
+`ssh_ops`, `inventory`), exactamente el mismo paquete que
+`scripts/calibrate_capacity.py` ya importa. Decisión: **envolver
+`vmlab_common`, no reimplementar.** `benign_lab/lab_actions.py`:
+`power_states()`, `power_domain(domain, on)`, `connectivity_check(domain,
+command)`, `recover_domain(domain)` (dispara los playbooks Ansible
+`reconnect_{mobile,fixed,peering}_domain.yml` ya validados). 5 pruebas
+(las que no tocan red pasan siempre; las que sí, se saltan si no hay
+checkout de `isp-ddos-ryu` al lado). **Hallazgo durante la prueba, no un bug
+de esta herramienta:** `vmlab_common.inventory.nodes_by_domain()` devuelve
+0 nodos para `fixed` y `peering` en el estado actual (no commiteado) de
+`isp-ddos-ryu` — ese repo está a mitad de una reorganización de inventario;
+`lab_actions.py` ya falla con un `ValueError` claro en ese caso en vez de
+silenciarlo. No hay playbook de reconexión para `enterprise` todavía.
 
-**Fase 6 — Telemetría homogénea por dominio (#9)**
-Completar lo que falta para que Mobile (KPM vía E2), Fixed y Enterprise
-reporten telemetría propia con el mismo formato que ya usa Peering
-(nfcapd) e Interfaces, para que la capa de análisis (#6) y auditoría
-(#10) los traten de forma uniforme.
+**Fase 6 — Telemetría homogénea por dominio (#9) — mecanismo implementado, adaptadores parciales**
+`benign_lab/domain_telemetry.py`: un esquema canónico de registro
+(`domain, source, element, metric, value, unit, timestamp`) y
+`from_interface_sample(...)`, adaptador real y probado para el formato que
+ya usa `interface_monitor.py`. `from_mapping(...)` es el mecanismo
+generalizado para los adaptadores que faltan (Peering/nfcapd, Mobile/KPM vía
+E2): no necesitan arquitectura nueva, solo un diccionario de
+`{campo_nativo: (métrica, unidad)}` una vez confirmado el formato exacto
+contra el colector real — que no pude confirmar desde este entorno. 4
+pruebas unitarias.
 
-**Fase 7 — Consolidación de análisis y auditoría (#6, #10)**
-Con todo lo anterior en su lugar, revisar `experimental_analytics.py` y
-`detection_audit.py` para que expongan exactamente los parámetros que la
-tesis necesita (ya están cerca; es más documentación/reporte que código
-nuevo) y retirar cualquier endpoint de analítica que haya quedado huérfano
-tras la Fase 0.
+**Fase 7 — Consolidación de análisis y auditoría (#6, #10) — sin cambios de código, como se previó**
+`experimental_analytics.py` y `detection_audit.py` ya exponen lo que la
+tesis necesita (medias por semilla, IC 95%, matriz de confusión por
+ventana, auditoría SSH autenticada); tras la Fase 0 no quedó ningún
+endpoint de analítica huérfano. No hay nada más que hacer aquí hasta que
+las Fases 1/3/4/5/6 estén validadas en el laboratorio real y se sepa qué
+campos nuevos (path_quality, domain_telemetry, lab_actions) vale la pena
+sumar a los reportes — prematuro antes de esa validación.
 
 ## 5. Requisito #11 — generación de ataques reales (sin hping3)
 
@@ -222,36 +263,36 @@ tocar esas funciones.
    vista mínima en el panel para componerlos (dominio, fuentes, protocolo,
    pps, ventana) en vez de editar JSON a mano por CLI.
 
-## 6. Decisiones que necesito de ti antes de seguir
+## 6. Estado y lo que falta
 
-**Hecho hasta ahora (2026-10-18), todo en el working tree, sin commit:**
-Fase 0 completa (docs archivados, `burst_variants` retirado — commiteado y
-pusheado antes de esta corrección de proceso). Requisito #11 (ataques):
-primitivas de flood en `agent.py`, `attack_planner.py`, `attack_runner.py`,
-CLI, 13 pruebas nuevas, todo probado en este entorno salvo `icmp_flood`
-contra VMs reales. Fase 2 (`sample_size.py`): implementada y probada con
-datos sintéticos.
+**Hecho (2026-10-18):** Fase 0 completa y pusheada (`f48aafc`, `ada5efd`).
+Requisito #11 (ataques sin hping3) y Fase 2 (`sample_size.py`) commiteados
+localmente (`67b2928`) y pusheados. Fases 1, 3 (parcial), 4, 5 y 6 añadidas
+en esta sesión — ver el detalle y lo probado/pendiente de cada una en §4.
+Todas pasan su propia suite de pruebas nuevas; falta correrlas sobre el
+commit más reciente (en curso) y decidir cuándo commitear/pushear.
 
-**No hecho todavía, porque necesita decisiones o el laboratorio real:**
+**Lo único que de verdad falta y requiere el laboratorio real, no más
+código a ciegas:**
 
-1. **Fase 1 (#1):** extender `calibrate_capacity.py`/`capacity_probe.py`
-   para medir delay/jitter/pérdida además de goodput. Solo puedo escribir el
-   código; validarlo requiere correrlo en el nodo orquestador contra las VMs
-   reales (igual que el resto de calibraciones del proyecto).
-2. **Fase 3 (#3/#4):** conectar `sample_size.py`/el `attack_runner` con
-   `scenario_series.py` para que el número de corridas y el disparo del
-   ataque dejen de ser fijos/manuales. Es la pieza que más toca el flujo
-   existente; prefiero hacerlo con calibración real en la mano (Fase 1), no
-   con números de ejemplo.
-3. **Fase 4 (#5):** umbrales por dominio y multidominio derivados de la
-   capacidad medida — depende de la Fase 1.
-4. **Fase 5 (#7):** ¿integro llamando al `webtool` de `isp-ddos-ryu`, o las
-   acciones de laboratorio viven directamente dentro de
-   `traffic-generator-pucp`? Sigue pendiente de tu confirmación.
-5. **Fases 6-7 (#9/#6/#10):** telemetría homogénea por dominio y
-   consolidación de analítica — son las de menor riesgo pero también las que
-   menos cambian el comportamiento actual; las dejo para el final salvo que
-   prefieras otro orden.
+1. Correr la Fase 1 (medición de delay/jitter/pérdida) en el nodo
+   orquestador y confirmar que no rompe la campaña de throughput existente.
+2. Con datos reales de la Fase 1, alimentar `sample_size.plan_sample_size()`
+   y sustituir el orden fijo de 3 semillas en `comparison_steps()` por
+   `interleaved_order()` con el N que resulte (Fase 3).
+3. Con datos reales de falsos positivos, correr
+   `threshold_recommendation.recommend_thresholds()` y aplicar con
+   `ThresholdControl.apply()` (Fase 4).
+4. Arreglar (en `isp-ddos-ryu`, no aquí) que `nodes_by_domain('fixed')` y
+   `('peering')` devuelven 0 nodos ahora mismo, antes de que `lab_actions.py`
+   pueda operar sobre esos dos dominios (Fase 5).
+5. Confirmar el formato real de telemetría de Peering (nfcapd) y Mobile
+   (KPM/E2) para escribirles un adaptador `from_mapping(...)` en
+   `domain_telemetry.py` (Fase 6).
+6. Conectar `attack_runner.py` con `scenario_series.py`/`api.py` para que el
+   disparo del ataque en un escenario `attack_on`/`attack_off` deje de
+   depender de que el operador lo confirme a mano (cierre de Fase 3, ya
+   diseñado en §5 del requisito #11).
 
-¿Seguimos en este orden, o priorizamos algo distinto (por ejemplo, llevar el
-requisito #11 al laboratorio real antes de avanzar con las fases 1/3/4)?
+Ninguno de estos seis puntos se puede terminar bien desde este entorno:
+todos necesitan el laboratorio real o datos que solo él produce.

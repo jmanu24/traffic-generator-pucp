@@ -38,6 +38,16 @@ domains={
     'peering':[('peer-flow*',CFG['nodes']['peer-flow*'])],
 }
 
+def client_path(item,target='10.55.0.100',count=30,interval=.2):
+    """RTT/jitter/loss from this client to the victim; additive to the TCP
+    goodput measurement above, independent failure (never aborts a round)."""
+    name,node=item
+    args=['python3','/tmp/benign-capacity-probe.py','path','--source',node.get('source_ip',''),'--target',target,'--count',str(count),'--interval',str(interval)]
+    prefix='sudo -n ip netns exec '+shlex.quote(node['namespace'])+' ' if node.get('namespace') else ''
+    result=json.loads(ssh(node['host'],node['user'],prefix+' '.join(map(shlex.quote,args))))
+    result['node']=name
+    return result
+
 def client(item,direction,streams):
     name,node=item
     addresses=json.loads(ssh(node['host'],node['user'],('sudo -n ip netns exec '+shlex.quote(node['namespace'])+' ' if node.get('namespace') else '')+'ip -j -4 address show dev '+shlex.quote(node['interface'])))
@@ -135,6 +145,22 @@ with open('/run/bng-agent/cmd','w') as fifo:
         medians={direction:statistics.median(r['mbps'] for r in report['rounds'] if r['domain']==domain and r['direction']==direction) for direction in ('ul','dl')}
         report['capacity_mbps'][domain]=round(min(medians.values()),2)
         print(json.dumps(dict(domain=domain,medians=medians,reference_mbps=report['capacity_mbps'][domain])),flush=True)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(items)) as pool:
+                path_results=list(pool.map(client_path,items))
+            report.setdefault('path_quality',{})[domain]=dict(
+                per_source=path_results,
+                loss_pct=dict(mean=statistics.mean(r['loss_pct'] for r in path_results),
+                               max=max(r['loss_pct'] for r in path_results)),
+                rtt_ms=dict(mean=statistics.mean(r['rtt_ms']['avg'] for r in path_results if r['rtt_ms']),
+                            max=max((r['rtt_ms']['max'] for r in path_results if r['rtt_ms']),default=None)) if any(r['rtt_ms'] for r in path_results) else None,
+                jitter_ms=dict(mean=statistics.mean(r['rtt_ms']['mdev'] for r in path_results if r['rtt_ms'])) if any(r['rtt_ms'] for r in path_results) else None)
+            (REPORT/'measurements.json').write_text(json.dumps(report,indent=2))
+            print(json.dumps(dict(domain=domain,path_quality=report['path_quality'][domain])),flush=True)
+        except Exception as exc:
+            # Delay/jitter/loss are additive evidence; never abort the throughput campaign for them.
+            report.setdefault('path_quality_errors',{})[domain]=repr(exc)
+            print(json.dumps(dict(domain=domain,path_quality_error=repr(exc))),flush=True)
     report['selection']='Minimum of directional medians; three initial repeats per direction, optional two additional repeats when initial max/min exceeds 1.3. Scalar reference accommodates BENIGN_V1 bidirectional traffic conservatively.'
     (REPORT/'measurements.json').write_text(json.dumps(report,indent=2))
 finally:

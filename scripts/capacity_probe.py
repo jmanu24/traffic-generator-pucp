@@ -2,8 +2,10 @@
 import argparse
 import concurrent.futures
 import json
+import re
 import socket
 import socketserver
+import subprocess
 import time
 
 BLOCK = b'\0' * 65536
@@ -104,19 +106,37 @@ def stream(args):
             seconds = args.duration - 2
         return dict(bytes=count,seconds=seconds,mbps=count*8/seconds/1e6,cpu_seconds=time.process_time()-start_cpu,error=error,observed_seconds=time.monotonic()-start)
 
+def path_quality(source,target,count,interval):
+    """RTT/jitter/loss via ping; additive, independent of the TCP goodput probe above."""
+    cmd=['ping','-n','-c',str(count),'-i',str(interval),'-W','2']
+    if source:cmd[1:1]=['-I',source]
+    cmd.append(target)
+    proc=subprocess.run(cmd,capture_output=True,text=True,timeout=count*interval+15)
+    loss=re.search(r'(\d+(?:\.\d+)?)% packet loss',proc.stdout)
+    if loss is None:
+        raise RuntimeError('Could not parse ping loss: '+(proc.stderr or proc.stdout)[-500:])
+    rtt=re.search(r'= ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)',proc.stdout)
+    return dict(loss_pct=float(loss.group(1)),
+                rtt_ms=dict(min=float(rtt.group(1)),avg=float(rtt.group(2)),max=float(rtt.group(3)),mdev=float(rtt.group(4))) if rtt else None,
+                count=count,interval_s=interval,raw_returncode=proc.returncode)
+
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('mode',choices=['server','client'])
+    parser.add_argument('mode',choices=['server','client','path'])
     parser.add_argument('--target',default='10.55.0.100')
     parser.add_argument('--port',type=int,default=19090)
     parser.add_argument('--source')
     parser.add_argument('--direction',choices=['ul','dl'],default='ul')
     parser.add_argument('--duration',type=float,default=10)
     parser.add_argument('--streams',type=int,default=2)
+    parser.add_argument('--count',type=int,default=30,help='path mode: ICMP probes')
+    parser.add_argument('--interval',type=float,default=.2,help='path mode: seconds between ICMP probes')
     args=parser.parse_args()
     if args.mode=='server':
         with Server((args.target,args.port),Handler) as server:
             server.serve_forever()
+    elif args.mode=='path':
+        print(json.dumps(dict(source=args.source,target=args.target,**path_quality(args.source,args.target,args.count,args.interval))),flush=True)
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.streams) as pool:
             results=list(pool.map(lambda _:stream(args),range(args.streams)))
