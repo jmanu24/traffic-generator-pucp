@@ -36,3 +36,25 @@ def test_vmlab_common_raises_clearly_when_the_sibling_checkout_is_missing(monkey
     monkeypatch.setattr(lab_actions, 'VM_LAB', lab_actions.VM_LAB / 'does-not-exist')
     with pytest.raises(RuntimeError, match='not found'):
         lab_actions._vmlab_common()
+
+
+class _FakeNode:
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakeSshResult:
+    """Mirrors vmlab_common.ssh_ops.SshResult's real field name: .rc, not
+    .returncode. A live run against the real lab caught this mismatch once;
+    this test pins it so it cannot silently come back."""
+    def __init__(self, rc, stdout='', stderr=''):
+        self.rc, self.stdout, self.stderr = rc, stdout, stderr
+
+
+def test_connectivity_check_reads_the_real_sshresult_rc_field(monkeypatch):
+    fake_inventory = type('M', (), {'nodes_by_domain': staticmethod(lambda d: [_FakeNode('n1'), _FakeNode('n2')])})
+    fake_ssh_ops = type('M', (), {'run': staticmethod(lambda name, cmd: _FakeSshResult(0 if name == 'n1' else 1, stdout='ok'))})
+    monkeypatch.setattr(lab_actions, '_vmlab_common', lambda: (None, fake_inventory, fake_ssh_ops))
+    results = lab_actions.connectivity_check('mobile')
+    assert results['n1']['ok'] is True
+    assert results['n2']['ok'] is False

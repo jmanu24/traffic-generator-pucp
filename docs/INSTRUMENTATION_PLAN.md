@@ -157,6 +157,37 @@ de esta herramienta:** `vmlab_common.inventory.nodes_by_domain()` devuelve
 `lab_actions.py` ya falla con un `ValueError` claro en ese caso en vez de
 silenciarlo. No hay playbook de reconexión para `enterprise` todavía.
 
+**Validado en vivo el 2026-10-18** (este mismo control node, 192.168.18.154,
+es el que corre `benign-lab-web.service`; sin experimento activo en ese
+momento — `data/runs/` vacío):
+- `power_states()`: 45 VMs reales vía `govc`, solo lectura.
+- `connectivity_check('enterprise','echo ok')` y `('mobile','echo ok')`:
+  16/16 nodos reales responden. **Bug real encontrado y corregido:** el
+  código leía `result.returncode`, pero `vmlab_common.ssh_ops.SshResult`
+  usa `.rc` — la prueba en vivo marcaba `ok=False` en nodos que en realidad
+  respondían bien. Corregido, con una prueba unitaria nueva que fija el
+  nombre real del campo para que no vuelva a pasar inadvertido.
+- Confirmado en vivo (no solo en el `inventory.py` leído antes): `fixed` y
+  `peering` siguen devolviendo 0 nodos.
+- `scripts/capacity_probe.py path` contra `10.55.0.100` desde este control
+  host: 100% pérdida — **esperado**, el control host está en la red de
+  gestión (10.10.0.x), sin ruta al plano de datos de la víctima
+  (10.55.0.x); confirma que no hay un atajo de red inesperado. La medición
+  real debe correr desde un cliente (`ue1`, etc.), como ya hace
+  `calibrate_capacity.py`.
+- `config.resolve()` con un plan `ATTACK_FLOOD_V1` real contra
+  `config/lab.connected.yaml`: genera el comando SSH correcto hacia `ue1`
+  (namespace real, host real) sin ningún cambio en `resolve()`.
+- `inspect-mapping` sobre `lab.connected.yaml`: mapeo completo, sin
+  parámetros faltantes.
+- **Hallazgo operativo importante:** el agente remoto vive en
+  `/opt/benign-lab/agent.py` en cada VM, una copia separada sincronizada por
+  `scripts/install_execution_agents.py` (ya existente, ya verifica que no
+  haya experimentos activos antes de instalar). Mis cambios en `agent.py`
+  (flood de ataque) **no tienen efecto en el laboratorio real hasta correr
+  ese script** — pendiente, requiere tu confirmación explícita porque
+  escribe en VMs reales y reinicia receptores.
+
 **Fase 6 — Telemetría homogénea por dominio (#9) — mecanismo implementado, adaptadores parciales**
 `benign_lab/domain_telemetry.py`: un esquema canónico de registro
 (`domain, source, element, metric, value, unit, timestamp`) y

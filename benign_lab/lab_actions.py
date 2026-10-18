@@ -63,7 +63,7 @@ def connectivity_check(domain, command='echo ok'):
     for node in nodes:
         try:
             result = ssh_ops.run(node.name, command)
-            results[node.name] = dict(ok=getattr(result, 'returncode', 1) == 0,
+            results[node.name] = dict(ok=getattr(result, 'rc', 1) == 0,
                                        stdout=getattr(result, 'stdout', None),
                                        stderr=getattr(result, 'stderr', None))
         except Exception as exc:
