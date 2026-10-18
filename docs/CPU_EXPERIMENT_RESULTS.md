@@ -45,7 +45,7 @@ BENIGN_V1, semilla y plan intactos. benign_plan.json es byte a byte identico en 
 
 37 pruebas existentes pasaron; nueva prueba Linux paso: cuatro procesos, 40 transferencias TCP, HTTP, UDP y salida/limpieza al fallar un hijo. Receptor real en Victim verificado con cuatro listeners por puerto TCP 9001, HTTP 8088 y UDP 9002 tras reiniciar. Fixed conserva diez namespaces y servicios bng-subscriber-agent/bng-macvlans activos.
 
-Persistencia en repositorio: topology.yaml (Victim 4, Fixed 2, radio shares normal y latency high), deploy_govc.sh respeta la politica al crear nuevas VMs; install_parallel_receiver.py reinstala el receptor desde el control node usando credenciales privadas y SSH conocido; apply_esxi_cpu_policy.py aplica la politica solamente sin experimentos activos. Ver docs/CPU_PARALLEL_RECEIVER.md.
+Persistencia en repositorio: topology.yaml (Victim 4, Fixed 2, radio shares normal y latency high), deploy_govc.sh respeta la politica al crear nuevas VMs; install_parallel_receiver.py reinstala el receptor desde el control node usando credenciales privadas y SSH conocido; apply_esxi_cpu_policy.py aplica la politica solamente sin experimentos activos. Ver docs/archive/CPU_PARALLEL_RECEIVER.md.
 
 Backups privados en control: .runtime/benign-lab/cpu-upgrade/before.json, after.json, policy-normal.json (prueba) y policy-high.json (estado final). Backups en Victim: /opt/benign-lab/agent.py.before-parallel y /etc/init.d/benign-lab-receiver.before-parallel. Reducir vCPU requiere apagar limpiamente las VMs. Las reservas de radio se conservan para proteger capacidad base.
 

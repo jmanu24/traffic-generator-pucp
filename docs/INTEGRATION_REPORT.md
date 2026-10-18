@@ -50,4 +50,4 @@ Antes de campaña: completar host/user/clave, IP/interfaz/namespace, session_id/
 
 ## Actualización de ejecución optimizada (2 de octubre de 2026)
 
-La plataforma conectada ya incorpora supervisores por VM, métricas agrupadas, persistencia en segundo plano y perfiles TCP/HTTP persistentes. La validación actual en Linux y el laboratorio real se documenta en [OPTIMIZATION_VALIDATION.md](OPTIMIZATION_VALIDATION.md); las instrucciones están en [OPTIMIZED_EXECUTION.md](OPTIMIZED_EXECUTION.md). Se conservaron BENIGN_V1 y el plan materializado original.
+La plataforma conectada ya incorpora supervisores por VM, métricas agrupadas, persistencia en segundo plano y perfiles TCP/HTTP persistentes. La validación actual en Linux y el laboratorio real se documenta en [OPTIMIZATION_VALIDATION.md](archive/OPTIMIZATION_VALIDATION.md); las instrucciones están en [OPTIMIZED_EXECUTION.md](OPTIMIZED_EXECUTION.md). Se conservaron BENIGN_V1 y el plan materializado original.
