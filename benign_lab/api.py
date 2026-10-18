@@ -32,6 +32,9 @@ from .threshold_control import ThresholdControl
 from .scenario_series import scenario_steps
 from .experiment_jobs import ExperimentJobs
 from .experimental_analytics import ExperimentalAnalytics, csv_data as analytics_csv
+from . import lab_actions
+from .attack_planner import generate_attack_plan, save_attack_plan, validate_attack_plan
+from .attack_runner import run_attack
 
 
 class PlanRequest(BaseModel):
@@ -79,6 +82,29 @@ class Annotation(BaseModel):
     name: str = Field(default='external_attack',min_length=1,max_length=80)
     action: str
 
+class LabActionRequest(BaseModel):
+    confirm: bool = False
+
+class AttackFlowRequest(BaseModel):
+    domain: Literal['mobile','fixed','enterprise','peering']
+    sources: List[str] = Field(min_length=1,max_length=50)
+    destination: str = Field(min_length=1,max_length=80)
+    wire_protocol: Literal['udp_flood','syn_flood','icmp_flood']
+    rate_pps: float = Field(gt=0,le=100000)
+    start_s: float = Field(default=0,ge=0,allow_inf_nan=False)
+    duration_s: float = Field(gt=0,le=300)
+    packet_size_bytes: int = Field(default=64,ge=8,le=1400)
+
+class AttackPlanRequest(BaseModel):
+    seed: int
+    duration_s: float = Field(gt=0,le=600)
+    description: str = Field(default='',max_length=1000)
+    flows: List[AttackFlowRequest] = Field(min_length=1,max_length=20)
+
+class AttackStartRequest(BaseModel):
+    plan_hash: str = Field(min_length=64,max_length=64)
+    confirm: bool = False
+
 
 def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
     data=Path(data_dir or os.getenv('BENIGN_DATA',ROOT/'data')).resolve()
@@ -87,6 +113,8 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
     token=token if token is not None else os.getenv('BENIGN_API_TOKEN','')
     plans=data/'plans'
     plans.mkdir(parents=True,exist_ok=True)
+    attack_plans=data/'attack_plans'
+    attack_plans.mkdir(parents=True,exist_ok=True)
     manager=Manager(data/'runs')
     analytics=ExperimentalAnalytics(data,manager)
     interfaces=InterfaceMonitor(data/'traffic',load_lab(lab_path))
@@ -617,6 +645,66 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
         raw=await request.body()
         try:return await background(lambda:analytics.import_archive(raw))
         except (ValueError,KeyError,TypeError,RuntimeError,zipfile.BadZipFile) as exc:raise HTTPException(400,str(exc)) from exc
+    def lab_busy():
+        return any(r['status'] not in TERMINAL for r in manager.runs.values())
+    @app.get('/api/lab/power-states')
+    async def lab_power_states():
+        try:return await background(lab_actions.power_states)
+        except RuntimeError as exc:raise HTTPException(409,str(exc)) from exc
+    @app.get('/api/lab/connectivity/{domain}')
+    async def lab_connectivity(domain:str):
+        try:return await background(lambda:lab_actions.connectivity_check(domain))
+        except ValueError as exc:raise HTTPException(400,str(exc)) from exc
+        except RuntimeError as exc:raise HTTPException(409,str(exc)) from exc
+    @app.post('/api/lab/power/{domain}/{state}')
+    async def lab_power(domain:str,state:Literal['on','off'],body:LabActionRequest):
+        if not body.confirm:raise HTTPException(400,'Set confirm=true: this changes real VM power state')
+        async with control_change_lock():
+            if lab_busy():raise HTTPException(409,'Finish or stop the active experiment before changing VM power')
+            try:return await background(lambda:lab_actions.power_domain(domain,state=='on'))
+            except ValueError as exc:raise HTTPException(400,str(exc)) from exc
+            except RuntimeError as exc:raise HTTPException(409,str(exc)) from exc
+    @app.post('/api/lab/recover/{domain}')
+    async def lab_recover(domain:str,body:LabActionRequest):
+        if not body.confirm:raise HTTPException(400,'Set confirm=true: this runs a real Ansible playbook against the lab')
+        async with control_change_lock():
+            if lab_busy():raise HTTPException(409,'Finish or stop the active experiment before recovering a domain')
+            try:return await background(lambda:lab_actions.recover_domain(domain))
+            except ValueError as exc:raise HTTPException(400,str(exc)) from exc
+            except RuntimeError as exc:raise HTTPException(409,str(exc)) from exc
+    def attack_plan_path(ph):
+        if not re.fullmatch(r'[0-9a-f]{64}',ph): raise HTTPException(400,'Invalid attack plan hash')
+        path=attack_plans/f'{ph}.json'
+        if not path.exists(): raise HTTPException(404,'Attack plan not found')
+        return path
+    @app.get('/api/attacks/plans')
+    def list_attack_plans():
+        rows=[]
+        for f in attack_plans.glob('*.json'):
+            p=json.loads(f.read_text())
+            rows.append(dict(plan_hash=p['plan_hash'],seed=p['seed'],duration_s=p['duration_s'],domains=p['domains'],description=p.get('description',''),events=len(p['events'])))
+        return rows[::-1]
+    @app.get('/api/attacks/plans/{ph}')
+    def get_attack_plan(ph:str):
+        return json.loads(attack_plan_path(ph).read_text())
+    @app.post('/api/attacks/plans')
+    async def create_attack_plan(body:AttackPlanRequest):
+        try:
+            plan=await background(lambda:generate_attack_plan(body.seed,body.duration_s,[f.model_dump() for f in body.flows],body.description))
+            save_attack_plan(plan,attack_plans/f"{plan['plan_hash']}.json")
+        except ValueError as exc:raise HTTPException(400,str(exc)) from exc
+        return dict(plan_hash=plan['plan_hash'],domains=plan['domains'],events=len(plan['events']))
+    @app.post('/api/attacks/start')
+    async def start_attack(body:AttackStartRequest):
+        if not body.confirm:raise HTTPException(400,'Set confirm=true: this sends real udp_flood/syn_flood/icmp_flood traffic from real lab clients')
+        plan=validate_attack_plan(json.loads(attack_plan_path(body.plan_hash).read_text()))
+        async with control_change_lock():
+            if lab_busy():raise HTTPException(409,'Finish or stop the active experiment before launching an attack plan')
+            cfg=load_lab(lab_path)
+            logs=[]
+            try:report=await run_attack(plan,cfg,on_log=logs.append)
+            except (ValueError,RuntimeError) as exc:raise HTTPException(400,str(exc)+' | log: '+' | '.join(logs)) from exc
+        return dict(started_at=report['started_at'],finished_at=report['finished_at'],logs=logs,events=report['events'])
     app.mount('/static',StaticFiles(directory=ROOT/'benign_lab/static'),name='static')
     @app.get('/')
     def index(): return FileResponse(ROOT/'benign_lab/static/index.html')

@@ -8,3 +8,5 @@ label,.primary,.secondary,.danger,input,select{font-size:14px}.capacity-grid lab
 .traffic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}.traffic-card{min-width:0}.traffic-card svg{width:100%;height:auto}.traffic-card h2{margin-bottom:4px}.traffic-card select{margin:8px 0}.traffic-card .traffic-values{display:flex;justify-content:space-between;gap:8px}.traffic-card .tx{color:#286fe8}.traffic-card .rx{color:#078b7d}.traffic-card svg text{font-size:11px;fill:#64748b}.traffic-card .stale{color:#b45309}
 
 .brand{font-size:16px;letter-spacing:1px}.brand-icon{flex-shrink:0}@media(max-width:1100px){nav{flex-wrap:wrap}}
+textarea{font:inherit;background:white;color:#28384f;border:1px solid #d9e0eb;border-radius:5px;padding:10px 11px;width:100%;margin-top:7px;font-size:13px;resize:vertical}textarea:focus{border-color:#549da4;outline:2px solid #a8dfd455}
+.help.error,td.error{color:#a13c31}

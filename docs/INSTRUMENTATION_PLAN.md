@@ -301,11 +301,28 @@ tocar esas funciones.
 ## 6. Estado y lo que falta
 
 **Hecho (2026-10-18):** Fase 0 completa y pusheada (`f48aafc`, `ada5efd`).
-Requisito #11 (ataques sin hping3) y Fase 2 (`sample_size.py`) commiteados
-localmente (`67b2928`) y pusheados. Fases 1, 3 (parcial), 4, 5 y 6 añadidas
-en esta sesión — ver el detalle y lo probado/pendiente de cada una en §4.
-Todas pasan su propia suite de pruebas nuevas; falta correrlas sobre el
-commit más reciente (en curso) y decidir cuándo commitear/pushear.
+Requisito #11 (ataques sin hping3) y Fase 2 (`sample_size.py`) pusheados
+(`67b2928`). Fases 1, 3 (parcial), 4, 5 y 6 pusheadas (`e53a680`, `23d7822`,
+`0412204`) — ver el detalle y lo probado/pendiente de cada una en §4.
+
+**Exposición en el panel (2026-10-18, sin commitear todavía):** `api.py`
+gana `/api/lab/power-states`, `/api/lab/connectivity/{domain}`,
+`/api/lab/power/{domain}/{on|off}`, `/api/lab/recover/{domain}`,
+`/api/attacks/plans` (crear/listar/leer), `/api/attacks/start`. Todo lo que
+cambia estado real (power/recover/start) exige `confirm:true` en el cuerpo
+Y se bloquea con 409 mientras haya un experimento activo (`manager.runs`
+no terminal) — dos guardas independientes, no solo el `confirm()` de la
+UI. Nueva vista **"Acciones de laboratorio"** en el panel
+(`index.html`/`lab-actions.js`): estado de energía (solo lectura),
+conectividad/encendido/apagado/recuperación por dominio con diálogo de
+confirmación explícito, y un compositor de ataques (formulario simple +
+JSON avanzado para multidominio) con lista de planes guardados y botón
+"Lanzar" por plan. 11 pruebas nuevas (`test_lab_actions_api.py` con
+`lab_actions` mockeado, `test_attacks_api.py` con un ataque real local de
+extremo a extremo vía HTTP). 203 passed en el suite completo. **El servicio
+en producción no se ha reiniciado:** nada de esto es visible en
+`http://192.168.18.154:8780` hasta que se reinicie `benign-lab-web.service`
+(ver §0 de esta sección).
 
 **Lo único que de verdad falta y requiere el laboratorio real, no más
 código a ciegas:**
