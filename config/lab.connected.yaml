@@ -1,0 +1,963 @@
+require_explicit_mapping: true
+capacity_mbps:
+  enterprise: 696.72
+  peering: 200.86
+  mobile: 4.44
+  fixed: 416.1
+allowed_target_cidrs:
+- 10.0.0.0/8
+max_clock_skew_s: 0.25
+start_lead_s: 5
+topology:
+  victim: 10.55.0.100
+  mobile_backbone: 10.91.0.0/30
+  fixed_backbone: 10.92.0.0/30
+  peering_backbone: 10.93.0.0/30
+  fixed_services:
+  - accel-ppp
+  - FreeRADIUS
+  - DHCP/IPoE
+nodes:
+  ue1:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.8
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.45.1.2
+    interface: tun_srsue
+    expected_gateway: null
+    check_route: true
+    namespace: ue1
+    sudo: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ue2:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.8
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.45.1.4
+    interface: tun_srsue
+    expected_gateway: null
+    check_route: true
+    namespace: ue2
+    sudo: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ue3:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.8
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.45.1.5
+    interface: tun_srsue
+    expected_gateway: null
+    check_route: true
+    namespace: ue3
+    sudo: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ue4:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.16
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.45.1.6
+    interface: tun_srsue
+    expected_gateway: null
+    check_route: true
+    namespace: ue4
+    sudo: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ue5:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.16
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.45.1.7
+    interface: tun_srsue
+    expected_gateway: null
+    check_route: true
+    namespace: ue5
+    sudo: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  fixed1:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.201
+    interface: macvlan1
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe0
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed1
+    sudo: true
+  fixed2:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.202
+    interface: macvlan2
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe1
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed2
+    sudo: true
+  fixed3:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.203
+    interface: macvlan3
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe2
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed3
+    sudo: true
+  fixed4:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.204
+    interface: macvlan4
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe3
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed4
+    sudo: true
+  fixed5:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.205
+    interface: macvlan5
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe4
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed5
+    sudo: true
+  fixed6:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.206
+    interface: macvlan6
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe5
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed6
+    sudo: true
+  fixed7:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.207
+    interface: macvlan7
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe6
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed7
+    sudo: true
+  fixed8:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.208
+    interface: macvlan8
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe7
+    observed_route: true
+    observed_active_session: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    namespace: fixed8
+    sudo: true
+  fixed9:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.209
+    interface: macvlan9
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe8
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    observed_active_session: true
+    observed_route: true
+    namespace: fixed9
+    sudo: true
+  fixed10:
+    configured: true
+    adapter: ssh_netns
+    host: 10.10.0.9
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.20.0.210
+    interface: macvlan10
+    expected_gateway: 10.20.0.1
+    check_route: true
+    access_mode: ipoe_namespace
+    session_id: ipoe9
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    observed_active_session: true
+    observed_route: true
+    namespace: fixed10
+    sudo: true
+  ent-site-1:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.21
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.70.0.11
+    interface: ens160
+    expected_gateway: null
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ent-site-2:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.22
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.70.0.12
+    interface: ens160
+    expected_gateway: null
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ent-site-3:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.23
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.70.0.13
+    interface: ens160
+    expected_gateway: null
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ent-site-4:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.24
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.70.0.14
+    interface: ens160
+    expected_gateway: null
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  ent-site-5:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.25
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.70.0.15
+    interface: ens160
+    expected_gateway: null
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  peer-flow*:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.17
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.30.0.2
+    interface: ens160
+    expected_gateway: 10.30.0.1
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  peer-router:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.17
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.30.0.2
+    interface: ens160
+    expected_gateway: 10.30.0.1
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    source_as: 64512
+  peer-router-2:
+    configured: true
+    adapter: ssh
+    host: 10.10.0.18
+    user: labadmin
+    port: 22
+    identity_file: null
+    python: /usr/bin/python3
+    agent_path: /opt/benign-lab/agent.py
+    source_ip: 10.30.0.4
+    interface: ens160
+    expected_gateway: 10.30.0.1
+    check_route: true
+    observed_route: true
+    auth_mode: password_env
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+    source_as: 64513
+targets:
+  victim-web:
+    host: 10.55.0.100
+    tcp_port: 9001
+    udp_port: 9002
+    http_port: 8088
+  ent-site-1:
+    host: 10.70.0.11
+    tcp_port: 9001
+    udp_port: 9002
+    http_port: 8088
+  ent-site-2:
+    host: 10.70.0.12
+    tcp_port: 9001
+    udp_port: 9002
+    http_port: 8088
+  ent-site-3:
+    host: 10.70.0.13
+    tcp_port: 9001
+    udp_port: 9002
+    http_port: 8088
+  ent-site-4:
+    host: 10.70.0.14
+    tcp_port: 9001
+    udp_port: 9002
+    http_port: 8088
+  ent-site-5:
+    host: 10.70.0.15
+    tcp_port: 9001
+    udp_port: 9002
+    http_port: 8088
+discovery:
+  date: '2026-10-01'
+  control_node: 192.168.18.154
+  project: /home/ubuntu/isp-ddos-ryu
+  revision: aa7ae879332364bd0bfd2b0f9aa19617dbe6d52f
+  scope: SSH and route inspection; no deployment or traffic experiment
+deployment_pending: []
+controller:
+  host: 192.168.18.154
+  user: ubuntu
+  python: 3.8.10
+  access: web on management IP 192.168.18.154:8780; all worker SSH originates here
+capacity_calibration:
+  report: docs/CAPACITY_MEASUREMENTS.json
+  timestamp: '2026-10-01T23:08:32.920836+00:00'
+  probe_sha256: 5978492fbca77789ea0a898afea936d597b47957a2a3f750a953537717213c71
+  unit: TCP delivered payload Mbps
+  selection: Minimum of directional medians; three initial repeats per direction,
+    optional two additional repeats when initial max/min exceeds 1.3. Scalar reference
+    accommodates BENIGN_V1 bidirectional traffic conservatively.
+baseline_control:
+  host: 10.10.0.1
+  user: labadmin
+  password_env: BENIGN_SSH_PASSWORD
+  known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/known_hosts
+  pe_host: 10.10.0.7
+  pe_password_env: BENIGN_PE_SSH_PASSWORD
+  ric_url: http://10.10.0.4:8768
+  fixed_host: 10.10.0.9
+  fixed_user: labadmin
+  bng_host: 10.10.0.2
+  bng_user: labadmin
+traffic_monitor:
+  interval_s: 5
+  retention_s: 21600
+  nodes:
+  - name: orchestrator
+    domain: shared
+    host: 10.10.0.1
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: bng
+    domain: fixed
+    host: 10.10.0.2
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: suscriptor
+    domain: fixed
+    host: 10.10.0.9
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces:
+    - fixed1
+    - fixed2
+    - fixed3
+    - fixed4
+    - fixed5
+    - fixed6
+    - fixed7
+    - fixed8
+    - fixed9
+    - fixed10
+    fixed: true
+    preferred_interface: ens192
+  - name: br
+    domain: peering
+    host: 10.10.0.3
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: peer-router
+    domain: peering
+    host: 10.10.0.17
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens160
+  - name: peer-router-2
+    domain: peering
+    host: 10.10.0.18
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens160
+  - name: ric
+    domain: mobile
+    host: 10.10.0.4
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: core5g
+    domain: mobile
+    host: 10.10.0.5
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: ran
+    domain: mobile
+    host: 10.10.0.6
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: cu2
+    domain: mobile
+    host: 10.10.0.15
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: du
+    domain: mobile
+    host: 10.10.0.10
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: du2
+    domain: mobile
+    host: 10.10.0.11
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: du3
+    domain: mobile
+    host: 10.10.0.12
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: du4
+    domain: mobile
+    host: 10.10.0.13
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: du5
+    domain: mobile
+    host: 10.10.0.14
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens192
+  - name: ue
+    domain: mobile
+    host: 10.10.0.8
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces:
+    - ue1
+    - ue2
+    - ue3
+    fixed: false
+    preferred_interface: ens192
+  - name: ue2
+    domain: mobile
+    host: 10.10.0.16
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces:
+    - ue4
+    - ue5
+    fixed: false
+    preferred_interface: ens192
+  - name: pe
+    domain: shared
+    host: 10.10.0.7
+    user: root
+    password_env: BENIGN_PE_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: false
+    namespaces: []
+    fixed: false
+    preferred_interface: br-ent
+  - name: ent-site-1
+    domain: enterprise
+    host: 10.10.0.21
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens160
+  - name: ent-site-2
+    domain: enterprise
+    host: 10.10.0.22
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens160
+  - name: ent-site-3
+    domain: enterprise
+    host: 10.10.0.23
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens160
+  - name: ent-site-4
+    domain: enterprise
+    host: 10.10.0.24
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens160
+  - name: ent-site-5
+    domain: enterprise
+    host: 10.10.0.25
+    user: labadmin
+    password_env: BENIGN_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: true
+    namespaces: []
+    fixed: false
+    preferred_interface: ens160
+  - name: victim
+    domain: shared
+    host: 10.10.0.100
+    user: root
+    password_env: BENIGN_PE_SSH_PASSWORD
+    known_hosts_file: /home/ubuntu/.ssh/known_hosts
+    python: python3
+    sudo: false
+    namespaces: []
+    fixed: false
+    preferred_interface: eth1
+  - name: control
+    domain: control
+    adapter: local
+    preferred_interface: ens160
+  - name: lab-wifi-relay
+    domain: shared
+    host: 10.10.0.252
+    user: root
+    identity_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/migration/control-overlay-ed25519
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/migration/overlay-known-hosts
+    python: python3
+    sudo: false
+    namespaces: []
+    fixed: false
+    preferred_interface: wired0
+  - name: lab-wifi-gateway
+    domain: shared
+    host: 10.10.0.253
+    user: root
+    identity_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/migration/control-overlay-ed25519
+    known_hosts_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/migration/overlay-known-hosts
+    python: python3
+    sudo: false
+    namespaces: []
+    fixed: false
+    preferred_interface: trunk0
+host_monitor:
+  retention_s: 21600
+  hosts:
+  - name: ESXi · 192.168.18.135
+    adapter: esxi
+    object: /ha-datacenter/host/localhost./localhost.localdomain
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+    poll_s: 20
+  - name: Windows · 192.168.18.45
+    adapter: workstation
+    config_file: /home/ubuntu/isp-ddos-ryu/.runtime/benign-lab/workstation.json
+    poll_s: 5
+vm_resource_monitor:
+  retention_s: 21600
+  esxi_vms:
+  - name: Ubuntu_20.04
+    domain: shared
+    vcpus: 4
+    object: /ha-datacenter/vm/Ubuntu_20.04
+    entity: '34'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: br
+    domain: peering
+    vcpus: 2
+    object: /ha-datacenter/vm/br
+    entity: '51'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: ric
+    domain: mobile
+    vcpus: 2
+    object: /ha-datacenter/vm/ric
+    entity: '52'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: core5g
+    domain: mobile
+    vcpus: 2
+    object: /ha-datacenter/vm/core5g
+    entity: '53'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: ran
+    domain: mobile
+    vcpus: 4
+    object: /ha-datacenter/vm/ran
+    entity: '54'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: ue
+    domain: mobile
+    vcpus: 8
+    object: /ha-datacenter/vm/ue
+    entity: '55'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: orchestrator
+    domain: shared
+    vcpus: 2
+    object: /ha-datacenter/vm/orchestrator
+    entity: '56'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: peer-router
+    domain: peering
+    vcpus: 2
+    object: /ha-datacenter/vm/peer-router
+    entity: '57'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: du
+    domain: mobile
+    vcpus: 8
+    object: /ha-datacenter/vm/du
+    entity: '65'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: du2
+    domain: mobile
+    vcpus: 8
+    object: /ha-datacenter/vm/du2
+    entity: '66'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: du3
+    domain: mobile
+    vcpus: 8
+    object: /ha-datacenter/vm/du3
+    entity: '67'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: ue2
+    domain: mobile
+    vcpus: 8
+    object: /ha-datacenter/vm/ue2
+    entity: '71'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: cu2
+    domain: mobile
+    vcpus: 4
+    object: /ha-datacenter/vm/cu2
+    entity: '72'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: du4
+    domain: mobile
+    vcpus: 8
+    object: /ha-datacenter/vm/du4
+    entity: '73'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: du5
+    domain: mobile
+    vcpus: 8
+    object: /ha-datacenter/vm/du5
+    entity: '74'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+  - name: lab-wifi-relay
+    domain: shared
+    vcpus: 2
+    object: /ha-datacenter/vm/lab-wifi-relay
+    entity: '75'
+    govc_env: /home/ubuntu/isp-ddos-ryu/deploy/vm-lab/.govc.env
+
+execution:
+  default_profile: classic
+  metrics_interval_s: 2
+
+detection_audit:
+  enabled: true
