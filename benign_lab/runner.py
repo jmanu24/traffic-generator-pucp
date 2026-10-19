@@ -517,7 +517,7 @@ class Manager:
         elapsed=self.elapsed(rid)
         if action=='start':
             if any(a['name']==name and a.get('end_s') is None for a in r['observed_attacks']): raise ValueError('Attack already marked active')
-            r['observed_attacks'].append(dict(name=name,start_s=elapsed,end_s=None))
+            r['observed_attacks'].append(dict(name=name,start_s=elapsed,end_s=None,annotation_source='operator_external'))
         elif action=='stop':
             matches=[a for a in r['observed_attacks'] if a['name']==name and a.get('end_s') is None]
             if not matches: raise ValueError('No active attack with this name')

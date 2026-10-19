@@ -92,7 +92,13 @@ async def run_attack(plan, cfg, start_lead_s=None, on_log=None):
         await asyncio.wait_for(asyncio.gather(*(read(proc) for proc, _ in prepared)),
                                 timeout=plan['duration_s']+30)
         finished_at = time.time()
-        return dict(started_at=start, finished_at=finished_at, events=events_by_id)
+        # Real resolved attacker addresses -- the same per-group context the
+        # agent payload itself was built from (config.resolve), never the
+        # plan's logical node names. Ground truth (attack_source_ips) must
+        # describe what was actually put on the wire, not what was planned.
+        source_ips = sorted({group['context']['source_ip'] for _, group in prepared
+                              if group.get('context', {}).get('source_ip')})
+        return dict(started_at=start, finished_at=finished_at, events=events_by_id, source_ips=source_ips)
     finally:
         for proc in processes:
             if proc.returncode is None:

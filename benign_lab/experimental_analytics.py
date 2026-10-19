@@ -107,12 +107,13 @@ class ExperimentalAnalytics:
   if not finite(r.get('elapsed_s')) or r.get('elapsed_s',0)+.001<p.get('duration_s',math.inf):reasons.append('observation_incomplete')
   if any(not finite(e.get(field,0)) or e.get(field,0)<0 for e in es for field in ('bytes_tx','bytes_rx')):reasons.append('invalid_counters')
   if finite(r.get('started_at')) and finite(r.get('finished_at')) and r['finished_at']<r['started_at']:reasons.append('invalid_timestamps')
+  if r.get('scenario')=='B0+attack' and r.get('observed_attacks') and all(a.get('annotation_source','operator_external')=='operator_external' for a in r['observed_attacks']):reasons.append('manual_attack_annotation')
   result=[]
   for d in ('all',)+DOMAINS:
    subset=es if d=='all' else [e for e in es if e.get('domain')==d];planned_subset=expected if d=='all' else [e for e in expected if e.get('domain')==d]
    planned=sum(e.get('planned_bytes',0) for e in planned_subset);actual=sum((e.get(field,0) if finite(e.get(field,0)) and e.get(field,0)>=0 else 0) for e in subset for field in ('bytes_tx','bytes_rx'));counts=collections.Counter(e.get('status') for e in subset);lateness=[e['lateness_s']*1000 for e in subset if finite(e.get('lateness_s'))]
    result.append(dict(domain=d,events=len(planned_subset),completed=counts['completed'],failed=counts['failed'],planned_bytes=planned,actual_bytes=actual,delivery_pct=100*actual/planned if planned else None,mean_mbps=actual*8/p['duration_s']/1e6 if planned_subset and p.get('duration_s',0)>0 else None,offered_mean_mbps=planned*8/p['duration_s']/1e6 if planned_subset and p.get('duration_s',0)>0 else None,failed_pct=100*counts['failed']/len(planned_subset) if planned_subset else None,lateness_p95_ms=percentile(lateness,.95),lateness_samples=len(lateness),error_types=dict(collections.Counter(error_kind(e.get('error')) for e in subset if e.get('status')=='failed'))))
-  value=dict(id=rid,created_at=r.get('created_at'),started_at=r.get('started_at'),status=r.get('status'),mode=r.get('mode'),scenario=r.get('scenario'),pipeline=r.get('pipeline'),detection_mode=r.get('detection_mode'),purpose=r.get('purpose','baseline_plan'),benchmark_domain=r.get('benchmark_domain'),seed=r.get('seed',p.get('seed')),plan_hash=r.get('plan_hash'),execution_hash=r.get('execution_hash'),execution_profile=r.get('execution_profile'),duration_s=p.get('duration_s',r.get('duration_s')),warmup_s=p.get('warmup_s'),capacity_mbps=p.get('capacity_mbps'),profile_hash=p.get('profile_hash'),profile=p.get('profile'),eligible=not reasons,exclusion_reasons=reasons,integrity=integrity,metrics=result,error=r.get('error'),imported=folder.parent==self.imports,context=r.get('experiment_context'),topology_signature=digest(topology(lab)),topology=topology(lab),python_versions=sorted({a.get('python_version','unknown') for a in r.get('agents',{}).values()}),audit_available=(folder/'detection_events.jsonl').exists(),warnings=[])
+  value=dict(id=rid,created_at=r.get('created_at'),started_at=r.get('started_at'),status=r.get('status'),mode=r.get('mode'),scenario=r.get('scenario'),pipeline=r.get('pipeline'),detection_mode=r.get('detection_mode'),attack_plan_hash=r.get('attack_plan_hash'),purpose=r.get('purpose','baseline_plan'),benchmark_domain=r.get('benchmark_domain'),seed=r.get('seed',p.get('seed')),plan_hash=r.get('plan_hash'),execution_hash=r.get('execution_hash'),execution_profile=r.get('execution_profile'),duration_s=p.get('duration_s',r.get('duration_s')),warmup_s=p.get('warmup_s'),capacity_mbps=p.get('capacity_mbps'),profile_hash=p.get('profile_hash'),profile=p.get('profile'),eligible=not reasons,exclusion_reasons=reasons,integrity=integrity,metrics=result,error=r.get('error'),imported=folder.parent==self.imports,context=r.get('experiment_context'),topology_signature=digest(topology(lab)),topology=topology(lab),python_versions=sorted({a.get('python_version','unknown') for a in r.get('agents',{}).values()}),audit_available=(folder/'detection_events.jsonl').exists(),warnings=[])
   if not value['context']:value['warnings'].append('Physical transport and traffic code version were not explicitly captured')
   self.cache[rid]=(signature,value);return value
  def catalog(self):
@@ -155,7 +156,7 @@ class ExperimentalAnalytics:
    policy=base['evaluation'].get('threshold_snapshots',[]);policy_ids=sorted(x.get('hash','') for x in policy);recorded_context=base['summary'].get('context');context={k:v for k,v in recorded_context.items() if k not in ('captured_at','run_id')} if recorded_context else dict(provenance='legacy_unknown')
    first_cycles=base['initial_cycles']
    initial_state='not_recorded' if not first_cycles else ('reported_restricted' if any(any(v>0 for v in x.get('active_blocks',{}).values()) for x in first_cycles) else 'reported_clear')
-   grouping=dict(initial_state=initial_state,profile=base['summary']['profile_hash'],capacity=base['summary']['capacity_mbps'],duration=base['summary']['duration_s'],warmup=base['summary']['warmup_s'],mode=base['summary']['mode'],scenario=base['summary']['scenario'],pipeline=base['summary']['pipeline'],detection_mode=base['summary']['detection_mode'],purpose=base['summary']['purpose'],benchmark=base['summary']['benchmark_domain'],execution=base['summary']['execution_hash'],topology=base['summary']['topology_signature'],context=context,hardware=base['hardware'],policy=policy_ids,python=base['summary']['python_versions'])
+   grouping=dict(initial_state=initial_state,profile=base['summary']['profile_hash'],capacity=base['summary']['capacity_mbps'],duration=base['summary']['duration_s'],warmup=base['summary']['warmup_s'],mode=base['summary']['mode'],scenario=base['summary']['scenario'],pipeline=base['summary']['pipeline'],detection_mode=base['summary']['detection_mode'],attack_plan=base['summary']['attack_plan_hash'],purpose=base['summary']['purpose'],benchmark=base['summary']['benchmark_domain'],execution=base['summary']['execution_hash'],topology=base['summary']['topology_signature'],context=context,hardware=base['hardware'],policy=policy_ids,python=base['summary']['python_versions'])
    metric=next((x for x in payload if x['domain']==domain),payload[0]);series=[];previous=None;changes=[]
    for e in base['plan'].get('events',[]):
     if domain=='all' or e['domain']==domain:changes.extend([(e['start_s'],e['rate_bps']/1e6),(e['start_s']+e['duration_s'],-e['rate_bps']/1e6)])
@@ -186,7 +187,7 @@ class ExperimentalAnalytics:
    for i,a in enumerate(details):
     for b in details[i+1:]:
      if not a['run']['eligible'] or not b['run']['eligible']:continue
-     if a['run']['plan_hash']!=b['run']['plan_hash'] or a['run']['execution_hash']!=b['run']['execution_hash']:continue
+     if a['run']['plan_hash']!=b['run']['plan_hash'] or a['run']['execution_hash']!=b['run']['execution_hash'] or a['run'].get('attack_plan_hash')!=b['run'].get('attack_plan_hash'):continue
      av=a['selected_metric'].get(metric);bv=b['selected_metric'].get(metric)
      if not finite(av) or not finite(bv):continue
      differences=[k for k in a['grouping'] if a['grouping'][k]!=b['grouping'][k]]
@@ -205,10 +206,10 @@ class ExperimentalAnalytics:
      for x in details:
       val=x['selected_metric'].get(metric)
       if not finite(val) or not x['run']['eligible']:continue
-      key=(str(x['run']['seed']),x['run']['plan_hash'])
+      key=(str(x['run']['seed']),x['run']['plan_hash'],x['run'].get('attack_plan_hash'))
       if x['group_id']==a['group_id']:left[key].append(val)
       if x['group_id']==b['group_id']:right[key].append(val)
-     matches=[dict(seed=key[0],plan_hash=key[1],n_reference=len(left[key]),n_comparison=len(right[key]),delta=statistics.mean(right[key])-statistics.mean(left[key])) for key in sorted(left.keys()&right.keys())]
+     matches=[dict(seed=key[0],plan_hash=key[1],attack_plan_hash=key[2],n_reference=len(left[key]),n_comparison=len(right[key]),delta=statistics.mean(right[key])-statistics.mean(left[key])) for key in sorted(left.keys()&right.keys(),key=lambda k:(k[0],k[1],k[2] or ''))]
      if matches:group_comparisons.append(dict(reference_group=a['group_id'],comparison_group=b['group_id'],factor=differences[0],matches=matches,statistics=seed_statistics([(x['seed'],x['delta']) for x in matches],precision),context_verified=all(x['run'].get('context') and x['hardware'] for x in details if x['group_id'] in (a['group_id'],b['group_id'])),scope='paired seed-mean differences, conditional on recorded comparability'))
    return dict(group_comparisons=group_comparisons,schema=1,domain=domain,metric=metric,unit=METRICS[metric][0],delta_unit='pp' if METRICS[metric][0]=='%' else METRICS[metric][0],metric_label=METRICS[metric][1],groups=summaries,excluded=excluded,runs=[dict(run=x['run'],metric=x['selected_metric'],resources=x['resources'],group_id=x['group_id']) for x in details],pairs=pairs,method=METHOD,generated_at=time.time(),warning='No pooling across distinct groups. Confidence intervals are model-based over seed means; they do not establish causality or treat events/windows as independent repeats.')
  def import_archive(self,raw):

@@ -16,10 +16,18 @@ def windows(plan,run):
         complete=b<=elapsed+1e-6
         # Planned attack windows are never silently promoted to observed truth.
         label='ATTACK' if observed else ('UNKNOWN' if expected or not complete else 'BENIGN')
+        # Per-entry provenance: an observed window can be confirmed by
+        # attack_runner's own per-event evidence (annotation_source=
+        # 'attack_runner') or by an operator's manual marker ('operator_
+        # external', the backstop for externally-launched attacks). A
+        # window straddling two overlapping markers reports both, joined,
+        # rather than collapsing to one -- never inferred from whether
+        # anything was observed at all.
+        observed_sources=sorted({x.get('annotation_source','operator_external') for x in observed})
         result.append(dict(experiment_id=run['id'],plan_hash=plan['plan_hash'],window=i,start_s=a,end_s=b,
                            label=label,label_id={'BENIGN':0,'ATTACK':1,'UNKNOWN':-1}[label],
                            planned_label='ATTACK' if expected else 'BENIGN',
-                           annotation_source='operator_external' if observed else ('schedule_unconfirmed' if expected else 'baseline'),
+                           annotation_source=';'.join(observed_sources) if observed_sources else ('schedule_unconfirmed' if expected else 'baseline'),
                            attack_names=';'.join(x['name'] for x in observed or expected),
                            observed_complete=complete,evaluation=complete and a>=plan['warmup_s'],
                            run_final=final))

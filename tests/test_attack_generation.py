@@ -73,6 +73,28 @@ def test_attack_flood_udp_reaches_a_real_socket_at_the_target_rate():
     asyncio.run(scenario())
 
 
+def test_run_attack_reports_resolved_source_ips():
+    async def scenario():
+        recv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        recv.bind(('127.0.0.1', 0))
+        recv.setblocking(False)
+        port = recv.getsockname()[1]
+        cfg = dict(
+            nodes={'nodeA': {'adapter': 'local', 'source_ip': '10.70.0.5'},
+                   'nodeB': {'adapter': 'local', 'source_ip': '10.70.0.6'}},
+            targets={'victim': {'host': '127.0.0.1', 'tcp_port': 1, 'udp_port': port, 'http_port': 1}},
+            allowed_target_cidrs=['127.0.0.0/8'], max_clock_skew_s=2.0, start_lead_s=2.0,
+        )
+        plan = generate_attack_plan(seed=3, duration_s=10, flows=[
+            dict(domain='enterprise', sources=['nodeA', 'nodeB'], destination='victim',
+                 wire_protocol='udp_flood', rate_pps=50, start_s=0, duration_s=2),
+        ])
+        report = await run_attack(plan, cfg)
+        assert report['source_ips'] == ['10.70.0.5', '10.70.0.6']
+        recv.close()
+    asyncio.run(scenario())
+
+
 def test_run_attack_coordinates_two_local_agents_against_a_real_socket():
     async def scenario():
         recv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
