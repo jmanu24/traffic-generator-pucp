@@ -10,7 +10,9 @@ risk.
 
 Limitation, stated plainly: SYN_THRESHOLD/UDP_THRESHOLD/ICMP_THRESHOLD/
 DECISION_THRESHOLD are global scalars in the deployed controller
-(isp-ddos-ryu), not one value per domain — giving every domain its own
+(orchestrator-ddos-pucp, confirmed against config/settings.py on that
+repo, not isp-ddos-ryu's own possibly-stale copy), not one value per
+domain — giving every domain its own
 threshold needs a controller-side change outside this repository. What this
 tool can do today is size those shared thresholds from the combined
 calibration evidence, and size DIST_PPS_THRESHOLD (the field that already

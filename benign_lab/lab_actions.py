@@ -34,6 +34,7 @@ RECONNECT_PLAYBOOKS = {
     'mobile': 'reconnect_mobile_domain.yml',
     'fixed': 'reconnect_fixed_domain.yml',
     'peering': 'reconnect_peering_domain.yml',
+    'enterprise': 'reconnect_enterprise_domain.yml',
 }
 
 

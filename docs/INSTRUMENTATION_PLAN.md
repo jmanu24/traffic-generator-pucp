@@ -9,9 +9,23 @@ priorizar el trabajo; no describe implementación detallada de cada módulo.
 
 No reinventar lo que ya funciona y está validado. Donde exista automatización
 probada en `isp-ddos-ryu` (roles Ansible de bring-up/reconexión/mitigación,
-`deploy/vm-lab/webtool`), BENIGN-LAB la **invoca** (subprocess/API), no la
-duplica. Donde ya exista un módulo propio que cubra el requisito, se
-**consolida y se documenta**, no se reescribe desde cero.
+infraestructura del laboratorio de VMs), BENIGN-LAB la **invoca**
+(subprocess/API), no la duplica. Donde ya exista un módulo propio que cubra
+el requisito, se **consolida y se documenta**, no se reescribe desde cero.
+
+**Dos repos, no confundirlos (corregido 2026-10-19):** `isp-ddos-ryu`
+provee la infraestructura del laboratorio de VMs (Ansible, `vmlab_common`,
+`topology.yaml`) — eso sí es la fuente de verdad. Pero el **controlador**
+(detección/mitigación/telemetría — `collectors/`, `telemetry/`,
+`detection/`, `mitigation/`, `oran_bridge/`, `config/settings.py`) realmente
+desplegado en el nodo orquestador vive en un repo aparte,
+**`orchestrator-ddos-pucp`** (`/home/ubuntu/orchestrator-ddos-pucp` en este
+entorno); `isp-ddos-ryu` puede tener una copia vieja de esos mismos
+módulos. Cualquier referencia a código de detección/telemetría/mitigación
+en este documento debe leerse contra `orchestrator-ddos-pucp`, verificando
+que coincide (ya confirmado para `peering_flow_collector.py`,
+`kpm_telemetry_api.py` y los valores reales de `config/settings.py` — ver
+Fase 6 y Fase 4).
 
 ## 1. Mapa de requisitos → estado actual
 
@@ -136,8 +150,10 @@ los dominios. 5 pruebas unitarias. El operador revisa la sugerencia y la
 aplica con `ThresholdControl.apply()`, que no se tocó. **Limitación real,
 no de esta herramienta:** `SYN_THRESHOLD`/`UDP_THRESHOLD`/`ICMP_THRESHOLD`/
 `DECISION_THRESHOLD` son escalares globales en el controlador desplegado
-(`isp-ddos-ryu`), no uno por dominio; un umbral por dominio de verdad
-requiere un cambio del lado del controlador, fuera de este repositorio.
+(`orchestrator-ddos-pucp`, confirmado contra `config/settings.py` de ese
+repo — no `isp-ddos-ryu`, cuya copia puede estar desactualizada), no uno
+por dominio; un umbral por dominio de verdad requiere un cambio del lado
+del controlador, fuera de este repositorio.
 
 **Fase 5 — Capa de acciones sobre el laboratorio (#7) — implementada, decisión ya tomada**
 Investigué `isp-ddos-ryu`: el antiguo `webtool` (puerto 8070) fue retirado
@@ -148,8 +164,27 @@ actuación reales viven ahora en `deploy/vm-lab/vmlab_common/` (`govc_ops`,
 `vmlab_common`, no reimplementar.** `benign_lab/lab_actions.py`:
 `power_states()`, `power_domain(domain, on)`, `connectivity_check(domain,
 command)`, `recover_domain(domain)` (dispara los playbooks Ansible
-`reconnect_{mobile,fixed,peering}_domain.yml` ya validados). No hay
-playbook de reconexión para `enterprise` todavía.
+`reconnect_{mobile,fixed,peering,enterprise}_domain.yml` ya validados).
+
+**Playbook de recuperación de `enterprise` — creado y validado en vivo
+(2026-10-19).** No existía; se creó
+`isp-ddos-ryu/deploy/vm-lab/ansible/playbooks/reconnect_enterprise_domain.yml`
+siguiendo el mismo patrón que mobile/fixed/peering (`tasks/retry_stage.yml`,
+checks + fix por etapa), pero con solo 2 etapas en vez de 5-6: Enterprise es
+deliberadamente más simple (sin BGP, sin prueba de actuación por suscriptor),
+cada sitio es solo *routing*/NAT + nftables + el receptor de
+`traffic-generator-pucp`. Etapas: (1) configuración/servicios por sitio
+(nftables, receptor, *forwarding*, dirección de gestión, ruta a la víctima
+vía la interfaz correcta — mismo chequeo que `agent.py`/`config.resolve()`
+hacen antes de confiar en una fuente); (2) conectividad real a la víctima
+(ICMP + TCP/80) desde cada sitio. La reparación nunca toca el *bridge* OVS
+de `pe` ni el controlador (igual razón que el resto de playbooks: eso es
+problema de alguien más arriba, no se repara a ciegas aquí).
+Corrido real (sin `--check`) contra las 5 VMs reales:
+**12/12 comprobaciones OK por sitio, `failed=0`, sin necesitar reparación.**
+`benign_lab.lab_actions.RECONNECT_PLAYBOOKS` actualizado; 15 pruebas en
+`test_lab_actions.py` (2 nuevas: que los 4 dominios tengan playbook, que
+cada archivo exista en disco).
 
 **Validado en vivo el 2026-10-18** (este mismo control node, 192.168.18.154,
 es el que corre `benign-lab-web.service`; sin experimento activo en ese
@@ -192,16 +227,29 @@ momento — `data/runs/` vacío):
   ese script** — pendiente, requiere tu confirmación explícita porque
   escribe en VMs reales y reinicia receptores.
 
-**Fase 6 — Telemetría homogénea por dominio (#9) — mecanismo implementado, adaptadores parciales**
-`benign_lab/domain_telemetry.py`: un esquema canónico de registro
-(`domain, source, element, metric, value, unit, timestamp`) y
-`from_interface_sample(...)`, adaptador real y probado para el formato que
-ya usa `interface_monitor.py`. `from_mapping(...)` es el mecanismo
-generalizado para los adaptadores que faltan (Peering/nfcapd, Mobile/KPM vía
-E2): no necesitan arquitectura nueva, solo un diccionario de
-`{campo_nativo: (métrica, unidad)}` una vez confirmado el formato exacto
-contra el colector real — que no pude confirmar desde este entorno. 4
-pruebas unitarias.
+**Fase 6 — Telemetría homogénea por dominio (#9) — completada: los tres adaptadores existen**
+`benign_lab/domain_telemetry.py`: esquema canónico de registro (`domain,
+source, element, metric, value, unit, timestamp`), `from_interface_sample(...)`
+(formato de `interface_monitor.py`), `from_mapping(...)` (mecanismo
+generalizado), y ahora también:
+- **`from_peering_flow(flow, ...)`** — leído directamente de
+  `collectors/peering_flow_collector.py` en **`orchestrator-ddos-pucp`**
+  (el repo realmente desplegado en el nodo orquestador — no `isp-ddos-ryu`,
+  que tiene una copia obsoleta de estos módulos; confirmado comparando
+  ambos archivo por archivo antes de construir sobre ellos): el registro
+  real que produce `nfdump` decodificado es `{src_ip, dst_ip, dst_port,
+  protocol, pps, bps}`, confirmado en el código (no es una suposición).
+- **`from_kpm_sample(element, kpm, ...)`** — leídos directamente de
+  `telemetry/mobile_adapter.py` y `oran_bridge/kpm_telemetry_api.py` en
+  `orchestrator-ddos-pucp`: el `kpm` que `mobile_adapter.py`
+  recibe es un diccionario plano `{nombre de contador E2SM-KPM: valor
+  numérico}` (`DRB.UEThpUl`, `DRB.AirIfDelayUl`, `RRU.PrbUsedUl`, etc. —
+  la lista exacta de `_KEEP_METRICS`). El colector original descarta la
+  unidad que el RIC reporta junto a cada valor (solo guarda el número), así
+  que las unidades en el adaptador son las nominales del contador estándar,
+  no releídas de una muestra en vivo — vale la pena una verificación puntual
+  contra la salida real de `oran_bridge` si algo se ve raro.
+7 pruebas unitarias (2 nuevas: una por adaptador).
 
 **Fase 7 — Consolidación de análisis y auditoría (#6, #10) — sin cambios de código, como se previó**
 `experimental_analytics.py` y `detection_audit.py` ya exponen lo que la

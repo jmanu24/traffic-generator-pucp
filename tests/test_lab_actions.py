@@ -8,14 +8,20 @@ import pytest
 from benign_lab import lab_actions
 
 
-def test_recover_domain_rejects_a_domain_without_a_reconnect_playbook():
-    with pytest.raises(ValueError, match='No recovery playbook'):
-        lab_actions.recover_domain('enterprise')
+def test_all_four_domains_have_a_reconnect_playbook():
+    assert set(lab_actions.RECONNECT_PLAYBOOKS) == {'mobile', 'fixed', 'enterprise', 'peering'}
 
 
 def test_recover_domain_rejects_an_unknown_domain():
     with pytest.raises(ValueError, match='No recovery playbook'):
         lab_actions.recover_domain('satellite')
+
+
+@pytest.mark.skipif(not lab_actions.VM_LAB.is_dir(), reason='isp-ddos-ryu/deploy/vm-lab not checked out on this host')
+@pytest.mark.parametrize('domain', ['mobile', 'fixed', 'enterprise', 'peering'])
+def test_every_reconnect_playbook_exists_on_disk(domain):
+    path = lab_actions.VM_LAB / 'ansible/playbooks' / lab_actions.RECONNECT_PLAYBOOKS[domain]
+    assert path.is_file()
 
 
 @pytest.mark.skipif(not lab_actions.VM_LAB.is_dir(), reason='isp-ddos-ryu/deploy/vm-lab not checked out on this host')
