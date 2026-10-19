@@ -290,18 +290,31 @@ los 10 nodos reales vía `scripts/install_execution_agents.py` (`ue`, `ue2`,
 `suscriptor`, `peer-router`, `ent-site-1..5`; receptor de `victim`
 reiniciado, sin errores). Sin experimento activo antes y después.
 
-Ataque real contenido vía CLI (`run-attack`) contra el laboratorio real:
-`ue1` (namespace srsUE real) → `victim-web` (10.55.0.100:9002), `udp_flood`,
-50 pps, 5 s. Resultado: **250 paquetes enviados, 49.98 pps reales vs. 50
-objetivo**, reloj sincronizado, arranque coordinado, `status=completed`,
-`error=null`. Primer flujo de ataque real generado por la herramienta
-misma (no hping3) contra la topología real.
+Ataques reales contenidos vía CLI (`run-attack`) contra el laboratorio
+real, mismo origen/destino/tasa/ventana (`ue1` → `victim-web`
+10.55.0.100:9002, 50 pps objetivo, 5 s), uno por protocolo, el 2026-10-18 y
+19 (sin experimento activo antes/después de cada corrida):
+
+| Protocolo | Paquetes enviados | pps real | Estado |
+|---|---|---|---|
+| `udp_flood` | 250 | 49.98 | `completed`, sin error |
+| `syn_flood` | 250 | 49.98 | `completed`, sin error |
+| `icmp_flood` | 250 | 50.00 | `completed`, sin error |
+
+`icmp_flood` confirma que el socket raw funciona con los privilegios reales
+del namespace `ue1` (root dentro del namespace vía `ip netns exec`), sin
+necesitar ningún cambio de permisos. Los tres protocolos de ataque de la
+herramienta (udp_flood/syn_flood/icmp_flood) quedan validados de extremo a
+extremo contra la topología real — primer tráfico de ataque generado por
+la herramienta misma (no hping3).
 
 ### Pendiente (siguiente incremento, requiere el laboratorio real)
 
-1. Validar `icmp_flood`/`syn_flood` contra VMs reales (privilegios, rutas,
-   que el SYN medio-abierto efectivamente dispare `SYN_THRESHOLD`).
-   (`udp_flood` ya validado en vivo, ver arriba.)
+1. ~~Validar `icmp_flood`/`syn_flood` contra VMs reales~~ — **resuelto**, ver
+   la tabla arriba (los tres protocolos, `completed` sin error). **No
+   confirmado todavía:** si el `syn_flood` realmente dispara
+   `SYN_THRESHOLD` en el controlador (requiere revisar la telemetría de
+   detección de esa ventana, no solo que el agente completó sin error).
 2. Enganchar `scenario_series.py`/`api.py`: hoy `scenario_steps(...,
    source_ips, description)` asume un ataque externo manual. Añadir un modo
    `attack_source='internal'` que, en vez de esperar al operador, genere un
@@ -309,9 +322,8 @@ misma (no hping3) contra la topología real.
    y vuelque `started_at`/`finished_at` reales en `observed_attacks` del
    `run.json` (mejora directa de precisión del ground truth, que hoy depende
    de que el operador confirme a mano).
-3. Endpoints `/api/attacks/plan` y `/api/attacks/start` en `api.py`, y una
-   vista mínima en el panel para componerlos (dominio, fuentes, protocolo,
-   pps, ventana) en vez de editar JSON a mano por CLI.
+3. ~~Endpoints `/api/attacks/plan` y `/api/attacks/start`, vista en el
+   panel~~ — **resuelto**, ver la sección "Exposición en el panel" en §6.
 
 ## 6. Estado y lo que falta
 
