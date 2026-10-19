@@ -308,13 +308,26 @@ herramienta (udp_flood/syn_flood/icmp_flood) quedan validados de extremo a
 extremo contra la topología real — primer tráfico de ataque generado por
 la herramienta misma (no hping3).
 
+### Confirmado contra la telemetría real del controlador (2026-10-19)
+
+`detection_audit.sqlite` (captura continua en vivo, ya corriendo desde el
+reinicio del servicio) registra para la ventana del `syn_flood`: el
+umbral de referencia en el orquestador real es 10; la fuente de `ue1`
+queda marcada como observada bajo `mobile` desde ~3.3 s de iniciado el
+flujo, pero el registro de restricciones activas permanece vacío en los
+31 ciclos revisados (±40 s) — ningún evento de decisión, solo muestreo
+periódico. Consistente con la histéresis ya documentada (mínimo de
+coincidencias dentro de una ventana corta antes de actuar): una sola
+fuente, 5 s, detectada pero sin acumular suficientes coincidencias para
+pasar a la etapa siguiente. Primera confirmación, con el flujo generado
+por la herramienta misma (no hping3), del comportamiento sub-umbral ya
+conocido de pruebas anteriores.
+
 ### Pendiente (siguiente incremento, requiere el laboratorio real)
 
 1. ~~Validar `icmp_flood`/`syn_flood` contra VMs reales~~ — **resuelto**, ver
-   la tabla arriba (los tres protocolos, `completed` sin error). **No
-   confirmado todavía:** si el `syn_flood` realmente dispara
-   `SYN_THRESHOLD` en el controlador (requiere revisar la telemetría de
-   detección de esa ventana, no solo que el agente completó sin error).
+   la tabla arriba (los tres protocolos, `completed` sin error).
+   Comportamiento de detección para `syn_flood` ya confirmado arriba.
 2. Enganchar `scenario_series.py`/`api.py`: hoy `scenario_steps(...,
    source_ips, description)` asume un ataque externo manual. Añadir un modo
    `attack_source='internal'` que, en vez de esperar al operador, genere un
