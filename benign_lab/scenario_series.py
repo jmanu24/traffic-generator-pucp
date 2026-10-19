@@ -27,7 +27,7 @@ def interleaved_order(seeds, repeats_per_seed=None):
         order.extend(seeds[shift:] + seeds[:shift])
     return order
 SCENARIOS={'benign_off':('B0','baseline'),'benign_on':('B0','enabled'),'attack_off':('B0+attack','baseline'),'attack_on':('B0+attack','enabled')}
-def scenario_steps(reference,scenario,start_s=300,end_s=360,source_ips=None,description=''):
+def scenario_steps(reference,scenario,start_s=300,end_s=360,source_ips=None,description='',detection_mode=None):
  if scenario not in SCENARIOS:raise ValueError('Unknown experimental scenario')
  attack=scenario.startswith('attack_');sources=[]
  if attack:
@@ -38,4 +38,7 @@ def scenario_steps(reference,scenario,start_s=300,end_s=360,source_ips=None,desc
    if ip.version!=4 or not ip.is_private:raise ValueError('Attack source must be a private laboratory IPv4 address')
    sources.append(str(ip))
  mode,pipeline=SCENARIOS[scenario]
- return [dict(r,scenario=mode,pipeline=pipeline,attack_windows=[dict(name='external_attack',start_s=start_s,end_s=end_s)] if attack else []) for r in reference],sorted(set(sources))
+ # D1: pipeline='enabled' scenarios (benign_on/attack_on) now require a
+ # detection_mode the same way a direct /api/runs call does.
+ if pipeline=='enabled' and detection_mode not in ('I','M'):raise ValueError('This scenario requires detection_mode=I or M')
+ return [dict(r,scenario=mode,pipeline=pipeline,attack_windows=[dict(name='external_attack',start_s=start_s,end_s=end_s)] if attack else [],detection_mode=detection_mode if pipeline=='enabled' else None) for r in reference],sorted(set(sources))

@@ -8,12 +8,20 @@ from test_experiment_jobs import setup
 def references():return [dict(plan_hash=str(seed),scenario='B0',pipeline='baseline',mode='lab',execution_profile='classic',speed=1,attack_windows=[]) for seed in (1,2,3,2,3,1,3,1,2,1,3,2,3,2,1,2,1,3)]
 @pytest.mark.parametrize('scenario',list(SCENARIOS))
 def test_four_scenarios_keep_plan_order_and_quotas(scenario):
- ref=references();steps,ips=scenario_steps(ref,scenario,300,360,['10.30.0.2'],'UDP lab 60 s')
+ detection_mode='I' if SCENARIOS[scenario][1]=='enabled' else None
+ ref=references();steps,ips=scenario_steps(ref,scenario,300,360,['10.30.0.2'],'UDP lab 60 s',detection_mode)
  assert len(steps)==18 and collections.Counter(x['plan_hash'] for x in steps)=={'1':6,'2':6,'3':6}
  assert [x['plan_hash'] for x in steps]==[x['plan_hash'] for x in ref]
  assert all(x['execution_profile']=='classic' and (x['scenario'],x['pipeline'])==SCENARIOS[scenario] for x in steps)
  assert all(x['pipeline']=='baseline' for x in ref)
  assert bool(steps[0]['attack_windows'])==scenario.startswith('attack_')
+ assert all(x['detection_mode']==detection_mode for x in steps)
+
+def test_enabled_scenario_requires_detection_mode():
+ with pytest.raises(ValueError,match='detection_mode'):
+  scenario_steps(references(),'benign_on',300,360)
+ with pytest.raises(ValueError,match='detection_mode'):
+  scenario_steps(references(),'attack_on',300,360,['10.30.0.2'],'UDP lab 60 s')
 
 def test_attack_requires_repeatable_conditions_and_window():
  with pytest.raises(ValueError):scenario_steps(references(),'attack_on')
