@@ -80,11 +80,99 @@ Datos crudos en `.runtime/benign-lab/calibration/measurements.json`
 `docs/CAPACITY_MEASUREMENTS.json` cuando se confirme (paso manual, no
 automático, según `docs/CAPACITY_CALIBRATION.md`).
 
-**Etapa B — Tamaño de muestra.** `sample_size.plan_sample_size()` con la
-salida de A y la precisión objetivo de §3 → N semillas, con la métrica
-limitante documentada.
+**Hallazgo: throughput DL de `fixed` es inestable (183/30/227/114/28 Mbps
+en las 5 repeticiones) — causa raíz confirmada con monitoreo en vivo de la
+tabla de flujos de OpenFlow en `pe` (no es ruido de muestreo).** La regla
+que el controlador instala reactivamente para el flujo `fixed`↔víctima
+tiene `hard_timeout=2`: se elimina a los 2 segundos sin importar si el
+flujo sigue activo, forzando una re-aprendizaje (vuelta a *table-miss*)
+cada vez. Reproducido dos veces con un solo suscriptor y un solo stream
+(sin concurrencia): reset a los ~2.3-2.4 s en ambas, coincidiendo
+exactamente con el `hard_timeout`. El bypass temporal que `enterprise` ya
+recibe durante su calibración usa `hard_timeout=900` (15 min) — por eso
+enterprise es estable y fixed no. **Es un problema del controlador real
+(`orchestrator-ddos-pucp`), no de esta herramienta ni de esta
+calibración**: cualquier conexión larga y de alto throughput en `fixed`
+se vería afectada igual, dentro o fuera de un experimento de calibración.
+No se modificó nada del controlador ni de `pe`; la reproducción fue de
+solo lectura/observación (un receptor temporal en `victim`, un flujo de
+prueba desde `fixed1`, un *poller* de `ovs-ofctl dump-flows` en `pe`),
+todo limpiado al terminar.
 
-**Etapa C — Generación de planes.** N planes benignos
+**Fix aplicado y recalibración — 2026-10-19.** El bug de validación de
+flujos NAT'd (`fixed`/`mobile`, ver hallazgo arriba) se corrigió en
+`orchestrator-ddos-pucp`. Se repitió exactamente la misma calibración
+(`calibrate_capacity.py --without-mitigation --fresh`) contra el
+laboratorio real para confirmar la resolución:
+
+| Dominio | Throughput (ref.) | RTT medio | Jitter medio | Pérdida |
+|---|---|---|---|---|
+| enterprise | 1259.58 Mbps | 3.18 ms | 8.02 ms | 0% |
+| peering | 1165.72 Mbps | 2.13 ms | 3.79 ms | 0% |
+| mobile | 5.50 Mbps | 109.06 ms | 32.71 ms | 0% |
+| fixed | 1048.49 Mbps | 1.11 ms | 0.35 ms | 0% |
+
+`fixed` DL: **1214.8 / 1022.2 / 1210.9 Mbps** en las 3 repeticiones
+iniciales (máx/mín = 1.19, por debajo del umbral 1.3 que dispara
+repeticiones extra) — ya no activa el camino de inestabilidad. Pasó de
+necesitar N=246 semillas (Etapa B, antes del fix) a un comportamiento
+estable comparable a `enterprise`/`peering`. `mobile` se mantiene bajo
+(~5.5 Mbps UL) por la pila de radio real, no por el bug — esperado y sin
+cambios respecto a la primera corrida.
+
+Queda un `ConnectionResetError` residual, aislado y de menor escala (5
+ocurrencias desde `10.92.0.2`, la IP NAT'd de `fixed`, durante toda la
+corrida de ~28 rounds) — no relacionado con el bug de `hard_timeout=2`
+corregido (no coincide con el patrón de ~2.3-2.4s por conexión, y no
+impidió que ninguna repetición de `fixed` necesitara reintentos). Se dejó
+registrado, no bloquea continuar a la Etapa B.
+
+Datos crudos de esta segunda corrida en el mismo
+`.runtime/benign-lab/calibration/measurements.json` (misma `probe_sha256`
+`0bbe3657...`, corrida sobrescrita tras archivar la anterior con
+`--fresh`); la tabla de la primera corrida arriba queda como evidencia
+histórica del hallazgo, no como referencia vigente para la Etapa B.
+
+**Etapa B — Tamaño de muestra — completada 2026-10-19.**
+`sample_size.required_seeds()` aplicado por dominio/dirección/métrica
+sobre la segunda corrida de calibración (post-fix), con la precisión
+objetivo de §3 (throughput ±10%, RTT ±15%, jitter ±20%, pérdida ±1pp
+absoluto):
+
+| Dominio | N (máx. entre métricas) | Métrica limitante |
+|---|---|---|
+| enterprise | 11 | jitter |
+| fixed | 7 | throughput DL |
+| mobile | 10 | throughput UL |
+| peering | 8 | throughput UL y DL (empate) |
+
+**N global de la campaña = 11** (el máximo entre dominios, para que la
+misma serie de semillas satisfaga la precisión objetivo en los cuatro
+dominios a la vez; limitante: jitter de `enterprise`). Desglose completo
+por métrica:
+
+| Dominio | throughput UL | throughput DL | RTT | Jitter | Pérdida |
+|---|---|---|---|---|---|
+| enterprise | 2 | 3 | 6 | 11 | sin variabilidad (0% en las 5 muestras) |
+| fixed | 3 | 7 | 5 | 5 | sin variabilidad |
+| mobile | 10 | 4 | 4 | 4 | sin variabilidad |
+| peering | 8 | 8 | — (1 sola fuente, sin réplicas) | — | sin variabilidad |
+
+Pérdida no genera N en ningún dominio porque las 5 corridas de
+`path_quality` midieron 0% de pérdida sin variabilidad — no hay señal
+para derivar un tamaño de muestra de esa métrica con los datos actuales;
+se mantiene el objetivo de §3 (±1pp) como validación posterior, no como
+insumo de N. `peering` no tiene RTT/jitter por dominio porque solo hay
+una fuente (`peer-flow*`), no una muestra de fuentes distintas como en
+los otros tres.
+
+**Comparación con el N=246 previo al fix**: antes de corregir el bug NAT,
+`fixed` DL era la métrica limitante de toda la campaña (N=246,
+impracticable). Tras el fix, `fixed` DL baja a N=7 y la métrica limitante
+pasa a ser `enterprise` jitter (N=11) — un orden de magnitud menor y ya
+viable para ejecutar la campaña completa.
+
+**Etapa C — Generación de planes.** N=11 planes benignos
 (`generate-plan`) + planes de ataque por escenario (`generate-attack-plan`,
 tabla en §4).
 
@@ -140,8 +228,8 @@ para que sean comparables entre sí.
 12 escenarios individuales × N semillas (Etapa B) × 2 condiciones
 (sin/con mitigación, Etapa F) = 24 × N corridas solo para la parte
 individual, antes del multidominio y de B0/B0-pipeline-activo (Etapa D).
-Dimensiona el tiempo total de la campaña — vale la pena tenerlo presente
-al fijar N en la Etapa B.
+Con N=11 (Etapa B, resuelto 2026-10-19): **264 corridas** para la parte
+individual de la Etapa F, más el multidominio y las N×4 de la Etapa D.
 
 | Escenario multidominio | Dominios | Fuentes | Protocolo | Tasa |
 |---|---|---|---|---|
