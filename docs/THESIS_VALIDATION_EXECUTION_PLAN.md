@@ -172,9 +172,36 @@ impracticable). Tras el fix, `fixed` DL baja a N=7 y la métrica limitante
 pasa a ser `enterprise` jitter (N=11) — un orden de magnitud menor y ya
 viable para ejecutar la campaña completa.
 
-**Etapa C — Generación de planes.** N=11 planes benignos
-(`generate-plan`) + planes de ataque por escenario (`generate-attack-plan`,
-tabla en §4).
+**Etapa C — Generación de planes — completada 2026-10-19.** 11 planes
+benignos (`generate-plan`, semillas 1-11, 180s, `config/lab.connected.yaml`)
+guardados en `data/plans/benign-seed{1..11}.json`. 13 planes de ataque
+(`generate-attack-plan`): los 12 escenarios factoriales (tabla en §4,
+fuente única por dominio, 50 pps, ventana 60-120s dentro de un plan de
+180s) en `data/attack_plans/factorial-{dominio}-{protocolo}.json`, más el
+multidominio (`ue1`+`ue2`, `fixed1`+`fixed2`, `ent-site-1`; 5 fuentes/3
+dominios, `udp_flood` ~50pps c/u) en
+`data/attack_plans/multidomain-distributed.json`. El `seed` de cada plan
+de ataque solo determina el hash de `event_id` (no hay aleatoriedad en
+tasa/tiempos, que vienen explícitos por flow) — por eso un solo plan por
+escenario basta; en la Etapa F cada uno se repite junto con cada una de
+las 11 semillas benignas, no se genera una variante de ataque por
+semilla. Hashes de planes de ataque:
+
+| Escenario | `plan_hash` (12 primeros hex) |
+|---|---|
+| mobile / udp_flood | `938cfc684438` |
+| mobile / syn_flood | `c087eb23a721` |
+| mobile / icmp_flood | `7ab72b68dc1b` |
+| fixed / udp_flood | `5d43102a870b` |
+| fixed / syn_flood | `907e87476d8f` |
+| fixed / icmp_flood | `ada136d0d2f7` |
+| enterprise / udp_flood | `444a6b786e37` |
+| enterprise / syn_flood | `71cf31b2871c` |
+| enterprise / icmp_flood | `f8215ed8063e` |
+| peering / udp_flood | `a29d2320d7a3` |
+| peering / syn_flood | `417fede93d3b` |
+| peering / icmp_flood | `5f02e3e3d0e1` |
+| multidominio distribuido | `d09e1eadbcc7` |
 
 **Etapa D — Línea base de falsos positivos.** Correr `B0` (pipeline
 suspendido) y `B0` con pipeline activo para los N × 4 dominios. La
