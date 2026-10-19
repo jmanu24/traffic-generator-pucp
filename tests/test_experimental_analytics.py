@@ -9,11 +9,13 @@ from benign_lab.config import ROOT
 def manager(tmp_path):
  root=tmp_path/'runs';root.mkdir();m=SimpleNamespace(runs={},events={},folder=lambda rid:root/rid);return m
 
-def record(m,rid,seed=1,delivery=.9,pipeline='baseline',status='completed',capacity=100):
+def record(m,rid,seed=1,delivery=.9,pipeline='baseline',status='completed',capacity=100,detection_mode=None,hardware=False):
  p=generate(load_profiles(ROOT/'profiles'),seed,5,{d:capacity for d in ('mobile','fixed','enterprise','peering')});folder=m.folder(rid);folder.mkdir()
- r=dict(id=rid,status=status,mode='lab',purpose='baseline_plan',scenario='B0',pipeline=pipeline,seed=seed,plan_hash=p['plan_hash'],execution_hash='exec',execution_profile='coordinated',duration_s=5,elapsed_s=5,created_at=100,started_at=100,finished_at=105,agents={},observed_attacks=[],attack_windows=[],experiment_context={'schema':1,'captured_at':seed,'transport':{'transport':'wired'}})
+ r=dict(id=rid,status=status,mode='lab',purpose='baseline_plan',scenario='B0',pipeline=pipeline,detection_mode=detection_mode,seed=seed,plan_hash=p['plan_hash'],execution_hash='exec',execution_profile='coordinated',duration_s=5,elapsed_s=5,created_at=100,started_at=100,finished_at=105,agents={},observed_attacks=[],attack_windows=[],experiment_context={'schema':1,'captured_at':seed,'transport':{'transport':'wired'}})
  es={e['event_id']:dict(e,status='completed',bytes_tx=int(e['planned_bytes']*delivery),bytes_rx=0,lateness_s=.01) for e in p['events']}
  (folder/'run.json').write_text(json.dumps(r));(folder/'benign_plan.json').write_text(json.dumps(p));(folder/'event_states.json').write_text(json.dumps(es));(folder/'lab_snapshot.json').write_text(json.dumps({'nodes':{},'targets':{}}))
+ if hardware:
+  (folder/'vm_resources.jsonl').write_text(json.dumps(dict(host='h1',platform='linux_guest',timestamp=102,interval_s=5,cpu_pct=1,logical_cpus=2,memory_total_bytes=2*1024**3,memory_pct=1))+'\n')
  m.runs[rid]=r;m.events[rid]=es;return folder
 
 def test_seed_balancing_and_no_pseudoreplication():
@@ -38,6 +40,32 @@ def test_same_plan_paired_seed_deltas(tmp_path):
  m=manager(tmp_path)
  for seed in [1,2]:record(m,'b'+str(seed),seed,delivery=.95,pipeline='baseline');record(m,'e'+str(seed),seed,delivery=.65,pipeline='enabled')
  r=ExperimentalAnalytics(tmp_path,m).report(list(m.runs));assert len(r['group_comparisons'])==1;comparison=r['group_comparisons'][0];assert comparison['statistics']['n_seeds']==2;assert comparison['statistics']['seed_balanced']['mean']==pytest.approx(-30,abs=.1)
+
+def test_detection_mode_separates_groups_and_is_recognized_as_single_factor(tmp_path):
+ m=manager(tmp_path)
+ for seed in [1,2]:
+  record(m,'i'+str(seed),seed,delivery=.6,pipeline='enabled',detection_mode='isolated',hardware=True)
+  record(m,'m'+str(seed),seed,delivery=.8,pipeline='enabled',detection_mode='multidomain',hardware=True)
+ a=ExperimentalAnalytics(tmp_path,m);r=a.report(list(m.runs))
+ # C3 (isolated) and C4 (multidomain) must not be conflated into one group.
+ assert len(r['groups'])==2
+ pair=next(p for p in r['pairs'] if p['seed']==1)
+ assert pair['differing_conditions']==['detection_mode']
+ assert pair['context_verified'] is True
+ # M-I framing: comparison-reference reads multidomain minus isolated.
+ assert pair['delta']==pytest.approx(20,abs=.1)
+
+def test_detection_mode_group_comparison_pairs_by_seed_and_plan(tmp_path):
+ m=manager(tmp_path)
+ for seed in [1,2]:
+  record(m,'i'+str(seed),seed,delivery=.6,pipeline='enabled',detection_mode='isolated',hardware=True)
+  record(m,'m'+str(seed),seed,delivery=.85,pipeline='enabled',detection_mode='multidomain',hardware=True)
+ r=ExperimentalAnalytics(tmp_path,m).report(list(m.runs))
+ assert len(r['group_comparisons'])==1
+ comparison=r['group_comparisons'][0]
+ assert comparison['factor']=='detection_mode'
+ assert comparison['statistics']['n_seeds']==2
+ assert comparison['statistics']['seed_balanced']['mean']==pytest.approx(25,abs=.1)
 
 def test_no_fp_evidence_is_missing_not_zero(tmp_path):
  m=manager(tmp_path);record(m,'old');d=ExperimentalAnalytics(tmp_path,m).detail('old');assert all(x['detection_fpr_pct'] is None for x in d['metrics']);assert d['evaluation']['available'] is False

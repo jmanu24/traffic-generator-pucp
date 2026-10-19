@@ -10,6 +10,16 @@ def test_baseline_rejects_wrong_scenarios(tmp_path,mode,scenario):
  with pytest.raises(ValueError,match='Baseline requires'):
   asyncio.run(Manager(tmp_path/'runs').start(p,f,load_lab(ROOT/'config/lab.demo.yaml'),mode=mode,scenario=scenario,speed=1,pipeline='baseline'))
 
+def test_detection_mode_rejects_unknown_value(tmp_path):
+ p=generate(load_profiles(ROOT/'profiles'),1,5);f=save_plan(p,tmp_path/'p.json')
+ with pytest.raises(ValueError,match='Invalid detection_mode'):
+  asyncio.run(Manager(tmp_path/'runs').start(p,f,load_lab(ROOT/'config/lab.demo.yaml'),mode='lab',speed=1,detection_mode='both'))
+
+def test_detection_mode_rejects_simulation(tmp_path):
+ p=generate(load_profiles(ROOT/'profiles'),1,5);f=save_plan(p,tmp_path/'p.json')
+ with pytest.raises(ValueError,match='only applies to laboratory runs'):
+  asyncio.run(Manager(tmp_path/'runs').start(p,f,load_lab(ROOT/'config/lab.demo.yaml'),mode='simulation',speed=20,detection_mode='isolated'))
+
 @pytest.mark.parametrize('scenario',['B0','B0+attack'])
 def test_baseline_restores_after_failed_preparation(tmp_path,monkeypatch,scenario):
  import benign_lab.runner as runner

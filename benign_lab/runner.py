@@ -143,8 +143,12 @@ class Manager:
                 await future
                 raise
 
-    async def start(self,plan,plan_file,cfg,mode='simulation',scenario='B0',speed=20,attack_windows=None,pipeline='enabled',execution_profile=None):
+    async def start(self,plan,plan_file,cfg,mode='simulation',scenario='B0',speed=20,attack_windows=None,pipeline='enabled',execution_profile=None,detection_mode=None):
         validate(plan)
+        if detection_mode is not None and detection_mode not in ('isolated','multidomain'):
+            raise ValueError('Invalid detection_mode')
+        if detection_mode is not None and mode!='lab':
+            raise ValueError('detection_mode only applies to laboratory runs')
         if plan.get('purpose')=='domain_benchmark' and (scenario!='B0' or attack_windows or (mode=='lab' and pipeline!='baseline')):
             raise ValueError('Domain benchmark requires B0 without attacks and baseline pipeline for laboratory runs')
         cfg=copy.deepcopy(cfg)
@@ -181,7 +185,16 @@ class Manager:
                plan_capacity_mbps=copy.deepcopy(plan['capacity_mbps']),lab_reference_capacity_mbps=copy.deepcopy(cfg.get('capacity_mbps')),
                capacities_differ=cfg.get('capacity_mbps')!=plan['capacity_mbps'],
                elapsed_s=0,attack_windows=attack_windows,observed_attacks=[],error=None,
-               pipeline=pipeline,execution_profile=options['profile'],execution_options=options,execution_hash=digest(options),baseline_control={},metrics_kind='simulated_payload' if mode=='simulation' else 'application_payload')
+               pipeline=pipeline,
+               # Descriptive only: records which detection mode (isolated vs.
+               # multidomain correlation) the real controller was already
+               # switched to before this run started -- this field does NOT
+               # itself switch anything. Mode switching is a separate,
+               # explicit step (see benign_lab/detection_mode_control.py)
+               # so that a live restart of the controller is never a
+               # side effect of starting a run.
+               detection_mode=detection_mode,
+               execution_profile=options['profile'],execution_options=options,execution_hash=digest(options),baseline_control={},metrics_kind='simulated_payload' if mode=='simulation' else 'application_payload')
         self.runs[rid]=r
         self.plan_cache[rid]=plan
         atomic_json(folder/'execution_profile.json',dict(execution_hash=r['execution_hash'],options=options,plan_hash=plan['plan_hash']))
