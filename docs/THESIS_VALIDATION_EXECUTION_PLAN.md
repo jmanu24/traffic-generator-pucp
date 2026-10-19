@@ -203,9 +203,54 @@ semilla. Hashes de planes de ataque:
 | peering / icmp_flood | `5f02e3e3d0e1` |
 | multidominio distribuido | `d09e1eadbcc7` |
 
-**Etapa D — Línea base de falsos positivos.** Correr `B0` (pipeline
-suspendido) y `B0` con pipeline activo para los N × 4 dominios. La
-segunda produce `baseline_pps_by_domain` para la Etapa E.
+**Etapa D — Línea base de falsos positivos — piloto validado 2026-10-19,
+N=11 pendiente.** Mecanismo: `POST /api/runs` (`mode=lab`, `scenario=B0`,
+`pipeline=baseline|enabled`, `speed=1`) por cada plan benigno, encadenado
+manualmente (no existe un endpoint de serie para una lista arbitraria de
+plan_hash distintos; `/api/jobs` solo repite un mismo plan_hash N veces).
+
+**Hallazgo bloqueante, corregido:** la primera corrida con pipeline
+`baseline` falló en `preparing` con `RuntimeError: ... clock exceeds
+allowed skew (offset=5.617784s)` para los 100 agentes simulados
+`peer-flow*` (dominio `peering`, mapeados a un único host real,
+`peer-router`/10.10.0.17). Causa: `systemd-timesyncd` estaba instalado
+pero **inactivo** en ese nodo (posiblemente desde un reinicio), sin
+servidor NTP alcanzable desde el segmento de laboratorio (pool público no
+enrutable). Fix aplicado en vivo: corrección puntual del reloj
+(`date -u --set`) + habilitación de `vmware-toolbox-cmd timesync enable`
+(estaba `Disabled`), que mantiene el reloj sincronizado contra el host
+ESXi de forma continua sin depender de NTP externo. Solo se tocó el nodo
+`peer-router`/`peer-flow*`; los demás dominios (mobile/fixed/enterprise,
+muchas VMs reales cada uno) no mostraron este error en ningún momento del
+piloto — no es un problema sistémico del laboratorio, aislado a ese nodo.
+
+**Piloto (semillas 1-3, 6 corridas, todas `completed_with_errors`
+tras 180s reales — estado terminal esperado, no un fallo):**
+- Pipeline `baseline`: ventanas quedan `unknown` en la matriz de
+  confusión (sin ciclos de detección activos) — coherente con
+  `docs/FALSE_POSITIVES_CALIBRATION.md` ("el déficit de payload no es una
+  tasa de falsos positivos").
+- Pipeline `enabled`: confusión real obtenida — seed1 FP=8/VN=16,
+  seed2 FP=4/VN=10, seed3 FP=9/VN=15 (FPR 28-38%, antes de recalibrar
+  umbrales — exactamente la motivación de la Etapa E).
+- `detection_events.jsonl` (vía `/api/runs/{rid}/export`) trae eventos
+  `kind=detection` con `domain`, `protocol`, `pps`, `attack_type` — la
+  fuente real de `baseline_pps_by_domain`. Con 3 semillas ya aparecen
+  falsos positivos de un solo dominio/protocolo para `peering`
+  (`bgp`: SYN max 2009.8 pps, UDP max 3134.8 pps) y `fixed`
+  (`broadband`: UDP max 1388.4 pps, n=48); `enterprise`/`mobile` solo
+  aparecieron dentro de `MULTIDOMAIN_DISTRIBUTED_ATTACK` en esta muestra
+  pequeña — esperable con N=3, debería aclarse con N=11.
+- Los 4 dominios (`enterprise`, `mobile`, `broadband`, `bgp`) aparecen en
+  cada ciclo de telemetría (`kind=cycle`) en las 3 semillas — el pipeline
+  de detección está vivo y observando los 4 dominios durante toda la
+  corrida, no solo cuando dispara una detección.
+
+Pendiente: extender a las 11 semillas completas (16 corridas adicionales:
+B0 baseline + B0 enabled para semillas 4-11; 1-3 ya hechas) y construir
+`baseline_pps_by_domain` agregando `detection_events.jsonl` de las 22
+corridas totales por dominio/protocolo (max de `pps` entre FPs de un solo
+dominio, igual que requiere `threshold_recommendation.recommend_thresholds`).
 
 **Etapa E — Recalibración de umbrales (Fase 4).**
 `threshold_recommendation.recommend_thresholds(baseline_pps_by_domain,
