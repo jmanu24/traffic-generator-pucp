@@ -57,11 +57,28 @@ Análisis (Fase 7, YA HECHA) → reporte final
 
 ## 2. Etapas
 
-**Etapa A — Calibración real (Fase 1).** `calibrate_capacity.py`
-(extendido con `path_quality`) contra el laboratorio real. Suspende
-mitigación en ventana acotada (watchdog de 15 min, mecanismo
-preexistente). Produce throughput/delay/jitter/pérdida por dominio y su
-variabilidad — insumo de la Etapa B.
+**Etapa A — Calibración real (Fase 1) — completada 2026-10-19.**
+`calibrate_capacity.py --without-mitigation --fresh` contra el
+laboratorio real. 28 rounds de throughput, `path_quality` sin errores en
+los 4 dominios; mitigación suspendida durante la corrida y confirmada
+restaurada después (`pipeline_active: true`, `active_blocks: {}`,
+verificado independientemente del mensaje del propio script).
+
+| Dominio | Throughput (ref.) | RTT medio | Jitter medio | Pérdida |
+|---|---|---|---|---|
+| enterprise | 1241.91 Mbps | 2.95 ms | 7.27 ms | 0% |
+| peering | 900.68 Mbps | 3.27 ms | 3.76 ms | 0% |
+| mobile | 5.18 Mbps | 104.49 ms | 32.00 ms | 0% |
+| fixed | 114.16 Mbps | 2.02 ms | 3.89 ms | 0% |
+
+Mobile tiene un RTT ~35× mayor que el resto — coherente con la pila de
+radio real (5G/O-RAN), no un error de medición. Pérdida 0% en los cuatro
+(muestra pequeña, 30 probes por fuente a 0.2s de intervalo — no descarta
+pérdida bajo carga sostenida, solo en el patrón de sondeo usado aquí).
+Datos crudos en `.runtime/benign-lab/calibration/measurements.json`
+(`probe_sha256` `0bbe3657...`); pendiente copiar la revisión final a
+`docs/CAPACITY_MEASUREMENTS.json` cuando se confirme (paso manual, no
+automático, según `docs/CAPACITY_CALIBRATION.md`).
 
 **Etapa B — Tamaño de muestra.** `sample_size.plan_sample_size()` con la
 salida de A y la precisión objetivo de §3 → N semillas, con la métrica
