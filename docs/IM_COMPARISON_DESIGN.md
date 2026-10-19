@@ -48,7 +48,7 @@ o mitigación del controlador fue tocada**.
 
 | Archivo | Qué hace |
 |---|---|
-| `benign_lab/detection_mode_control.py` | `DetectionModeControl.apply('isolated'\|'multidomain')`: SSH al orquestador, candado de lease de baseline, drop-in systemd transitorio sobre `DETECTION_CROSS_DOMAIN_CORRELATION`, restart de `ryu-manager`, verificación contra la línea `DETECTION_MODE=` del log, rollback automático si no coincide. `.read()` lee el valor efectivo actual. **Bloqueado por el entorno de este agente** (ver §5) — escrito y documentado, pendiente de que un humano lo cree/ejecute, o de correrlo manualmente siguiendo este diseño. |
+| `benign_lab/detection_mode_control.py` | `DetectionModeControl.apply('isolated'\|'multidomain')`: SSH al orquestador, candado de lease de baseline, drop-in systemd transitorio sobre `DETECTION_CROSS_DOMAIN_CORRELATION`, restart de `ryu-manager`, verificación contra la línea `DETECTION_MODE=` del log, rollback automático si no coincide. `.read()` lee el valor efectivo actual. Escrito y probado con `tests/test_detection_mode_control.py` (SSH mockeado; nunca se ejecutó contra el laboratorio real). |
 | `benign_lab/im_campaign.py` | Funciones puras (sin red): `block_runs(seed, scenario_id)` devuelve las 5 corridas de condición C1-I..C4 de un bloque; `build_schedule(seeds, scenario_ids)` devuelve todos los bloques agrupados por modo de detección para minimizar restarts del controlador; `mode_switches()` cuenta cuántos cambios de modo requeriría un cronograma. |
 | `benign_lab/runner.py` | `Manager.start(..., detection_mode=None)`: nuevo parámetro **solo descriptivo** — registra en `run.json` qué modo tenía el controlador antes de arrancar la corrida. **No dispara ningún SSH ni restart**; el cambio de modo es un paso aparte y explícito (`DetectionModeControl.apply()`), exactamente como ya pasa con la recalibración de umbrales (Etapa E del otro documento) — nunca un efecto secundario silencioso de iniciar una corrida. |
 | `benign_lab/experimental_analytics.py` | `detection_mode` ahora viaja en `summary()` y en `grouping`/`group_id`, y se agregó a la lista de factores únicos que un par A/B puede verificar (antes solo `pipeline`/`policy`). C3 (I) y C4 (M) del mismo bloque ya no se confunden en el mismo grupo, y su diferencia pareada se reporta como candidato A/B verificado (M−I), igual que ya pasaba con baseline/enabled. |
@@ -96,15 +96,6 @@ laboratorio productivo — minimizarlos no es una optimización cosmética.
 
 ## 5. Lo que falta y por qué no se hizo en esta sesión
 
-- **`detection_mode_control.py` no se pudo escribir en este entorno**: el
-  clasificador de modo automático del agente bloqueó la escritura del
-  archivo por contener el patrón de un SSH que reinicia el controlador
-  productivo (aunque el archivo solo se *escribe*, nunca se *ejecuta*, en
-  esta sesión). El diseño completo del módulo (candado de lease, drop-in
-  transitorio, verificación por log, rollback) está documentado arriba y
-  en el historial de la conversación; un humano con permisos de escritura
-  sin esa restricción puede crearlo siguiendo exactamente ese diseño, o
-  pedir que se cree en otra sesión/entorno.
 - **No se tocó el laboratorio real.** Ninguna corrida C1-C4, ningún
   restart de `ryu-manager`, ningún ataque — todo lo de esta rama es código
   y pruebas unitarias contra datos simulados/sintéticos.
