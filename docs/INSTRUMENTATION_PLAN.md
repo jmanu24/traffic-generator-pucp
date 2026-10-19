@@ -283,10 +283,25 @@ tocar esas funciones.
   todo este trabajo — ver §0). Las 13 pruebas nuevas (`test_attack_
   generation.py`, `test_sample_size.py`) pasan.
 
+### Validado en el laboratorio real (2026-10-18)
+
+Instalados `agent.py`/`supervisor.py`/`connection_pool.py` actualizados en
+los 10 nodos reales vía `scripts/install_execution_agents.py` (`ue`, `ue2`,
+`suscriptor`, `peer-router`, `ent-site-1..5`; receptor de `victim`
+reiniciado, sin errores). Sin experimento activo antes y después.
+
+Ataque real contenido vía CLI (`run-attack`) contra el laboratorio real:
+`ue1` (namespace srsUE real) → `victim-web` (10.55.0.100:9002), `udp_flood`,
+50 pps, 5 s. Resultado: **250 paquetes enviados, 49.98 pps reales vs. 50
+objetivo**, reloj sincronizado, arranque coordinado, `status=completed`,
+`error=null`. Primer flujo de ataque real generado por la herramienta
+misma (no hping3) contra la topología real.
+
 ### Pendiente (siguiente incremento, requiere el laboratorio real)
 
 1. Validar `icmp_flood`/`syn_flood` contra VMs reales (privilegios, rutas,
    que el SYN medio-abierto efectivamente dispare `SYN_THRESHOLD`).
+   (`udp_flood` ya validado en vivo, ver arriba.)
 2. Enganchar `scenario_series.py`/`api.py`: hoy `scenario_steps(...,
    source_ips, description)` asume un ataque externo manual. Añadir un modo
    `attack_source='internal'` que, en vez de esperar al operador, genere un
