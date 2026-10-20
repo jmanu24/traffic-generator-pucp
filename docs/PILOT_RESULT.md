@@ -86,11 +86,48 @@ efectivo del controlador durante una corrida C2 es literalmente lo que
 haya dejado la corrida anterior — variar es el comportamiento correcto
 del diseño, no algo que debiera "corregirse" para que coincida.
 
-**El fix vive en este checkout (`traffic-generator-pucp`), no en el
-servidor del panel** (`192.168.18.154:8780`, que corre su propia copia
-desplegada) — desplegarlo ahí es un paso aparte, pendiente de tu
-confirmación, igual que los despliegues anteriores de esta sesión
-(`THRESHOLD_CONTROL_PATH_FIX.md`, `MOBILE_SYN_TELEMETRY_DEPLOY_DRIFT.md`).
+**El servidor del panel (`192.168.18.154:8780`) resultó correr en esta
+misma máquina**, instalado en modo editable (`pip install -e`) apuntando
+directo a este checkout (`WorkingDirectory=/home/ubuntu/
+traffic-generator-pucp` en `benign-lab-web.service`) — "desplegar" un
+cambio de código aquí es, a diferencia de los despliegues anteriores de
+esta sesión (`THRESHOLD_CONTROL_PATH_FIX.md`,
+`MOBILE_SYN_TELEMETRY_DEPLOY_DRIFT.md`, que sí vivían en hosts remotos
+sin git), solo reiniciar el servicio systemd. Se reinició (sin
+experimentos activos) y se confirmó en vivo que las dos corridas que
+antes mostraban `group_id` distinto ahora coinciden.
+
+**Segundo hallazgo, encontrado al confirmar el primero a escala
+completa**: tras el reinicio, `POST /api/analytics/report` sobre las 60
+corridas pasó a dar **0 `group_comparisons`** (peor que las 5 de antes,
+aunque los grupos en sí ya eran más consistentes — 33 en vez de 38).
+Causa: el `hash` crudo de `threshold_snapshot` que emite el controlador
+combina `DETECTION_CROSS_DOMAIN_CORRELATION` con el resto de los
+umbrales en un solo valor — pero esa bandera **es** `detection_mode`
+(ya su propia dimensión de agrupación, separada). Un par C3/C4 ahora
+siempre difería en **dos** campos a la vez (`policy` y
+`detection_mode`), nunca en exactamente uno, que es lo que
+`report()` exige para marcar un par como "de un solo factor verificado"
+— la comparación I-vs-M, el propósito central de este diseño, nunca
+podía quedar verificada.
+
+**Corregido** (`benign_lab/experimental_analytics.py`):
+`policy_comparability_id()` recalcula el id de comparabilidad de
+política a partir de `values` **excluyendo**
+`DETECTION_CROSS_DOMAIN_CORRELATION` (más `implementation_hashes`, sin
+tocar), en vez de reusar el hash crudo del controlador. Dos pruebas de
+regresión en `tests/test_experimental_analytics.py` (confirmadas: fallan
+sin el fix) — una prueba que el flag de modo ya no cuenta como una
+diferencia de política, y otra que una diferencia real de umbrales
+(p. ej. `SYN_THRESHOLD` tras una recalibración) sigue separando grupos
+como corresponde.
+
+Pendiente de desplegar (otro reinicio del mismo servicio) y reconfirmar
+sobre las 60 corridas reales — ver §2.1.
+
+### 2.1 Confirmación tras el segundo despliegue
+
+_(completado tras comitear el fix — ver el resultado real abajo)_
 
 ## 3. Indicadores (emparejados manualmente, sorteando el bug de §2)
 
