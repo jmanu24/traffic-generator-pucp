@@ -46,16 +46,25 @@ def test_invalid_threshold_never_calls_remote(value):
 
 def test_threshold_writer_changes_only_allowed_assignment(tmp_path,monkeypatch):
  import subprocess,socket,time,hashlib
- cfg=tmp_path/'settings.py';cfg.write_text('DECISION_THRESHOLD = 1.5\nSYN_THRESHOLD = 10\nUDP_THRESHOLD = 200\nICMP_THRESHOLD = 150\nKEEP = 7\n')
+ (tmp_path/'config').mkdir()
+ cfg=tmp_path/'config'/'settings.py';cfg.write_text('DECISION_THRESHOLD = 1.5\nSYN_THRESHOLD = 10\nUDP_THRESHOLD = 200\nICMP_THRESHOLD = 150\nKEEP = 7\n')
  c=ThresholdControl({'baseline_control':{'host':'orch','user':'labadmin'}})
  async def fake(*args,**kwargs):
-  code=kwargs['payload'].replace('/opt/Tesis_Controller/config/settings.py',str(cfg)).replace('/var/lib/benign-threshold-history',str(tmp_path/'history')).replace('/run/benign-baseline/lease.json',str(tmp_path/'lease.json'))
+  code=kwargs['payload'].replace('/var/lib/benign-threshold-history',str(tmp_path/'history')).replace('/run/benign-baseline/lease.json',str(tmp_path/'lease.json'))
   import contextlib,io
   out=io.StringIO()
   with contextlib.redirect_stdout(out):exec(code,{})
   return out.getvalue()
  c.guard.ssh=fake
- monkeypatch.setattr(subprocess,'run',lambda *args,**kwargs:None);monkeypatch.setattr(time,'sleep',lambda _:None)
+ class Result:
+  def __init__(self,stdout):self.stdout=stdout
+ def fake_run(args,**kwargs):
+  # Mirrors the live ryu-manager unit: apply() resolves settings.py from
+  # this (systemctl show -p WorkingDirectory), the rest (e.g. the restart)
+  # are no-ops here same as before this systemd lookup existed.
+  if args[:4]==['systemctl','show','ryu-manager','-p']:return Result('WorkingDirectory='+str(tmp_path)+'\n')
+  return None
+ monkeypatch.setattr(subprocess,'run',fake_run);monkeypatch.setattr(time,'sleep',lambda _:None)
  class Socket:
   def close(self):pass
  monkeypatch.setattr(socket,'create_connection',lambda *args,**kwargs:Socket())

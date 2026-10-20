@@ -8,12 +8,20 @@ from test_experiment_jobs import setup
 def references():return [dict(plan_hash=str(seed),scenario='B0',pipeline='baseline',mode='lab',execution_profile='classic',speed=1,attack_windows=[]) for seed in (1,2,3,2,3,1,3,1,2,1,3,2,3,2,1,2,1,3)]
 @pytest.mark.parametrize('scenario',list(SCENARIOS))
 def test_four_scenarios_keep_plan_order_and_quotas(scenario):
- ref=references();steps,ips=scenario_steps(ref,scenario,300,360,['10.30.0.2'],'UDP lab 60 s')
+ detection_mode='I' if SCENARIOS[scenario][1]=='enabled' else None
+ ref=references();steps,ips=scenario_steps(ref,scenario,300,360,['10.30.0.2'],'UDP lab 60 s',detection_mode)
  assert len(steps)==18 and collections.Counter(x['plan_hash'] for x in steps)=={'1':6,'2':6,'3':6}
  assert [x['plan_hash'] for x in steps]==[x['plan_hash'] for x in ref]
  assert all(x['execution_profile']=='classic' and (x['scenario'],x['pipeline'])==SCENARIOS[scenario] for x in steps)
  assert all(x['pipeline']=='baseline' for x in ref)
  assert bool(steps[0]['attack_windows'])==scenario.startswith('attack_')
+ assert all(x['detection_mode']==detection_mode for x in steps)
+
+def test_enabled_scenario_requires_detection_mode():
+ with pytest.raises(ValueError,match='detection_mode'):
+  scenario_steps(references(),'benign_on',300,360)
+ with pytest.raises(ValueError,match='detection_mode'):
+  scenario_steps(references(),'attack_on',300,360,['10.30.0.2'],'UDP lab 60 s')
 
 def test_attack_requires_repeatable_conditions_and_window():
  with pytest.raises(ValueError):scenario_steps(references(),'attack_on')
@@ -41,7 +49,19 @@ def test_confirmed_attack_confusion_requires_coverage(detected,label):
  p,r,a,i,e=dataset(detected=detected);r.update(scenario='B0+attack',observed_attacks=[dict(name='external_attack',start_s=0,end_s=5)],attack_source_ips=['10.20.0.36'])
  x=evaluate(p,r,a,i,e)['confusion_matrix'];assert x['counts'][label]==1 and x['counts']['VN']==1
  r['pipeline']='baseline';x=evaluate(p,r,a,i,e)['confusion_matrix'];assert x['counts']['unknown']==2 and x['counts'][label]==0
- r['pipeline']='enabled';r['attack_source_ips']=['10.99.0.1'];x=evaluate(p,r,a,i,e)['confusion_matrix'];assert x['counts']['unknown']==1 and x['counts']['FN']==0
+
+def test_attack_window_eligibility_does_not_depend_on_detector_observed_sources():
+ # Ground truth for the ATTACK window must not depend on whether the
+ # detector's own telemetry happened to see the declared attacker IP --
+ # it is still eligible and scored (here, correctly as FN: the detector
+ # never actually flagged 10.99.0.1), with that visibility only reported
+ # separately, non-gating, as attacker_observed_by_detector.
+ p,r,a,i,e=dataset(detected=True);r.update(scenario='B0+attack',pipeline='enabled',observed_attacks=[dict(name='external_attack',start_s=0,end_s=5)],attack_source_ips=['10.99.0.1'])
+ x=evaluate(p,r,a,i,e)['confusion_matrix']
+ assert x['counts']['unknown']==0 and x['counts']['FN']==1 and x['counts']['VN']==1
+ attack_window=next(w for w in x['windows'] if w['truth']=='ATTACK')
+ assert attack_window['classification']=='FN' and attack_window['attacker_observed_by_detector'] is False
+ assert x['attacker_observed_by_detector']==dict(windows=1,observed=0,rate=0.0)
 
 def test_benign_confusion_and_absent_coverage():
  x=evaluate(*dataset())['confusion_matrix'];assert x['counts']['FP']==1 and x['counts']['VN']==1

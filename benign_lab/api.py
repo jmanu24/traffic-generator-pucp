@@ -56,6 +56,14 @@ class RunRequest(BaseModel):
     execution_profile: Optional[Literal['classic','coordinated','persistent']] = None
     speed: float = Field(default=20,ge=.1,le=100)
     attack_windows: List[AttackWindow] = Field(default_factory=list,max_length=100)
+    # D1: "I" (isolated) | "M" (multidomain) -- the public spelling this
+    # thesis's own condition names (C1-I/C1-M/C3/C4) use; translated to
+    # Manager.start()'s isolated/multidomain internally.
+    detection_mode: Optional[Literal['I','M']] = None
+    # D5: an already-generated attack plan (ATTACK_FLOOD_V1) to launch
+    # internally, synchronized to this run's own benign start -- mutually
+    # exclusive with attack_windows (see Manager.start()).
+    attack_plan_hash: Optional[str] = Field(default=None,pattern=r'^[0-9a-f]{64}$')
 
 class ScenarioSeriesRequest(BaseModel):
     scenario: Literal['benign_off','benign_on','attack_off','attack_on']
@@ -63,6 +71,7 @@ class ScenarioSeriesRequest(BaseModel):
     end_s: float = Field(default=360, gt=0, allow_inf_nan=False)
     source_ips: List[str] = Field(default_factory=list,max_length=100)
     description: str = Field(default='',max_length=1000)
+    detection_mode: Optional[Literal['I','M']] = None
 
 class JobRequest(BaseModel):
     run: RunRequest
@@ -160,6 +169,7 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
             interface_cursors[rid]=rows[-1]['id']
         return rows
     audit=DetectionAuditMonitor(data,load_lab(lab_path))
+    manager.audit=audit  # D1: the second detection_mode verification evidence reads this
     audit_cursors={}
     def capture_audit(rid):
         r=manager.runs[rid]
@@ -384,7 +394,10 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
     async def launch_request(raw):
         body=RunRequest(**raw)
         p=read_plan(body.plan_hash)
-        return await manager.start(p,path_for(body.plan_hash),load_lab(lab_path),body.mode,body.scenario,body.speed,[w.model_dump() for w in body.attack_windows],body.pipeline,body.execution_profile)
+        detection_mode={'I':'isolated','M':'multidomain'}.get(body.detection_mode)
+        attack_plan=json.loads(attack_plan_path(body.attack_plan_hash).read_text()) if body.attack_plan_hash else None
+        attack_plan_file=attack_plan_path(body.attack_plan_hash) if body.attack_plan_hash else None
+        return await manager.start(p,path_for(body.plan_hash),load_lab(lab_path),body.mode,body.scenario,body.speed,[w.model_dump() for w in body.attack_windows],body.pipeline,body.execution_profile,detection_mode,attack_plan,attack_plan_file)
     jobs=ExperimentJobs(data,manager,control_change_lock,launch_request,path_for)
     app.state.experiment_jobs=jobs
     @app.get('/api/jobs')
@@ -422,7 +435,7 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
     async def start_comparison():
         async with control_change_lock(): return jobs.create_comparison(comparison_steps())
     def scenario_design(body):
-        steps,sources=scenario_steps(comparison_steps(),body.scenario,body.start_s,body.end_s,body.source_ips,body.description)
+        steps,sources=scenario_steps(comparison_steps(),body.scenario,body.start_s,body.end_s,body.source_ips,body.description,body.detection_mode)
         return steps,sources
     @app.post('/api/scenario-series/preview')
     async def preview_scenario_series(body:ScenarioSeriesRequest):

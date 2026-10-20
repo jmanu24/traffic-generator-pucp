@@ -16,6 +16,9 @@ from .execution import execution_options
 from .transport import SupervisorSession
 from .clock_sync import probe_clock
 from .baseline import BaselineGuard
+from .detection_mode_control import DetectionModeControl
+from .attack_runner import run_attack
+from .attack_planner import validate_attack_plan
 from .ground_truth import windows
 from .planner import canonical, digest, validate
 
@@ -53,6 +56,12 @@ class Manager:
         self.plan_cache={}
         self.checkpoint_lock=None
         self.terminal_metrics={}
+        # Set by the caller (api.py) after construction, same lifetime as
+        # this Manager -- the second detection_mode verification evidence
+        # (LAB_AUDIT kind=cycle) reads from it. None means "not wired up",
+        # which apply_detection_mode treats as verification being
+        # impossible, never as an unverified pass.
+        self.audit=None
         for file in sorted(self.root.glob('*/run.json')):
             run=json.loads(file.read_text())
             eid=run['id']
@@ -143,8 +152,23 @@ class Manager:
                 await future
                 raise
 
-    async def start(self,plan,plan_file,cfg,mode='simulation',scenario='B0',speed=20,attack_windows=None,pipeline='enabled',execution_profile=None):
+    async def start(self,plan,plan_file,cfg,mode='simulation',scenario='B0',speed=20,attack_windows=None,pipeline='enabled',execution_profile=None,detection_mode=None,attack_plan=None,attack_plan_file=None):
         validate(plan)
+        if detection_mode is not None and detection_mode not in ('isolated','multidomain'):
+            raise ValueError('Invalid detection_mode')
+        if detection_mode is not None and mode!='lab':
+            raise ValueError('detection_mode only applies to laboratory runs')
+        if detection_mode is None and mode=='lab' and pipeline=='enabled' and cfg.get('baseline_control'):
+            raise ValueError('detection_mode is required for laboratory runs with pipeline=enabled (D1)')
+        if attack_plan is not None and (scenario!='B0+attack' or mode!='lab'):
+            raise ValueError('attack_plan requires scenario=B0+attack and laboratory mode')
+        if attack_plan is not None and attack_windows:
+            raise ValueError('Provide either attack_plan or explicit attack_windows, not both')
+        if attack_plan is not None:
+            validate_attack_plan(attack_plan)
+            attack_windows=[dict(name=attack_plan['plan_hash'][:12],
+                                  start_s=min(e['start_s'] for e in attack_plan['events']),
+                                  end_s=max(e['start_s']+e['duration_s'] for e in attack_plan['events']))]
         if plan.get('purpose')=='domain_benchmark' and (scenario!='B0' or attack_windows or (mode=='lab' and pipeline!='baseline')):
             raise ValueError('Domain benchmark requires B0 without attacks and baseline pipeline for laboratory runs')
         cfg=copy.deepcopy(cfg)
@@ -173,6 +197,8 @@ class Manager:
         folder.mkdir()
         # Exact byte copy: experiment metadata is never written into the plan.
         (folder/'benign_plan.json').write_bytes(Path(plan_file).read_bytes())
+        if attack_plan is not None:
+            (folder/'attack_plan.json').write_bytes(Path(attack_plan_file).read_bytes())
         atomic_json(folder/'lab_snapshot.json',cfg)
         r=dict(id=rid,status='preparing',created_at=time.time(),started_at=None,finished_at=None,
                purpose=plan.get('purpose','baseline_plan'),benchmark_domain=plan.get('benchmark_domain'),benchmark_planned_bytes=sum(e['planned_bytes'] for e in plan['events']) if plan.get('purpose')=='domain_benchmark' else None,
@@ -181,7 +207,17 @@ class Manager:
                plan_capacity_mbps=copy.deepcopy(plan['capacity_mbps']),lab_reference_capacity_mbps=copy.deepcopy(cfg.get('capacity_mbps')),
                capacities_differ=cfg.get('capacity_mbps')!=plan['capacity_mbps'],
                elapsed_s=0,attack_windows=attack_windows,observed_attacks=[],error=None,
-               pipeline=pipeline,execution_profile=options['profile'],execution_options=options,execution_hash=digest(options),baseline_control={},metrics_kind='simulated_payload' if mode=='simulation' else 'application_payload')
+               attack_plan_hash=attack_plan['plan_hash'] if attack_plan is not None else None,
+               pipeline=pipeline,
+               # Descriptive only: records which detection mode (isolated vs.
+               # multidomain correlation) the real controller was already
+               # switched to before this run started -- this field does NOT
+               # itself switch anything. Mode switching is a separate,
+               # explicit step (see benign_lab/detection_mode_control.py)
+               # so that a live restart of the controller is never a
+               # side effect of starting a run.
+               detection_mode=detection_mode,
+               execution_profile=options['profile'],execution_options=options,execution_hash=digest(options),baseline_control={},metrics_kind='simulated_payload' if mode=='simulation' else 'application_payload')
         self.runs[rid]=r
         self.plan_cache[rid]=plan
         atomic_json(folder/'execution_profile.json',dict(execution_hash=r['execution_hash'],options=options,plan_hash=plan['plan_hash']))
@@ -214,13 +250,15 @@ class Manager:
                 except (OSError,ValueError,KeyError):context['transport']=None
         r['experiment_context']=context
         await self.persist_async(rid)
-        self.tasks[rid]=asyncio.create_task(self.execute(rid,plan,cfg,groups))
+        self.tasks[rid]=asyncio.create_task(self.execute(rid,plan,cfg,groups,attack_plan=attack_plan))
         return self.snapshot(rid)
 
-    async def execute(self,rid,plan,cfg,groups):
+    async def execute(self,rid,plan,cfg,groups,attack_plan=None):
         r=self.runs[rid]
         guard=None
         try:
+            if r['mode']=='lab' and r['pipeline']=='enabled' and cfg.get('baseline_control'):
+                await self.apply_detection_mode(rid,cfg,r['detection_mode'])
             before_start=None
             if r['mode']=='lab' and (r['pipeline']=='baseline' or cfg.get('baseline_control')):
                 cfg=copy.deepcopy(cfg)
@@ -254,17 +292,61 @@ class Manager:
             if r['mode']=='simulation':
                 await self.simulate(rid,plan)
             else:
+                # When an attack plan is integrated (D5), its launch is
+                # deferred until the benign plan's own start epoch is
+                # known (set by real() via on_benign_start, fired at the
+                # exact moment real() computes it -- never polled), then
+                # fired with a start_lead_s chosen so attack_runner's own
+                # clock-sync schedules its events against that SAME
+                # epoch. Everything below this is unchanged when there is
+                # no attack_plan (attack_task stays None).
+                attack_task=None
+                on_benign_start=None
+                if attack_plan is not None:
+                    loop=asyncio.get_event_loop();benign_start=loop.create_future()
+                    def on_benign_start(epoch,_f=benign_start):
+                        if not _f.done():_f.set_result(epoch)
+                    async def launch_attack():
+                        epoch=await benign_start
+                        self.log(rid,f'Launching integrated attack plan {attack_plan["plan_hash"][:12]} synchronized to benign epoch {epoch:.6f}')
+                        report=await run_attack(attack_plan,cfg,start_lead_s=epoch-time.time(),on_log=lambda m:self.log(rid,'attack: '+m))
+                        self.record_attack_evidence(rid,report)
+                    attack_task=asyncio.create_task(launch_attack())
+                real_kwargs=dict(on_start=on_benign_start) if attack_task else {}
                 if guard and r['pipeline']=='baseline':
-                    traffic=asyncio.create_task(self.real(rid,plan,cfg,groups))
+                    traffic=asyncio.create_task(self.real(rid,plan,cfg,groups,**real_kwargs))
                     monitor=asyncio.create_task(guard.monitor())
+                    watch=[traffic,monitor]+([attack_task] if attack_task else [])
                     try:
-                        done,_=await asyncio.wait((traffic,monitor),return_when=asyncio.FIRST_COMPLETED)
+                        done,_=await asyncio.wait(watch,return_when=asyncio.FIRST_COMPLETED)
                         if monitor in done:await monitor
                         await traffic
+                        if attack_task:
+                            # traffic/monitor finishing never guarantees
+                            # on_benign_start fired (e.g. stopped before
+                            # real() ever computed its start epoch) --
+                            # awaiting an attack_task still stuck on that
+                            # future would hang forever otherwise.
+                            if not benign_start.done():attack_task.cancel()
+                            try:await attack_task
+                            except asyncio.CancelledError:pass
                     finally:
-                        for task in (traffic,monitor):
+                        for task in watch:
                             if not task.done():task.cancel()
-                        await asyncio.gather(traffic,monitor,return_exceptions=True)
+                        await asyncio.gather(*watch,return_exceptions=True)
+                elif attack_task:
+                    traffic=asyncio.create_task(self.real(rid,plan,cfg,groups,before_start=before_start,**real_kwargs) if before_start else self.real(rid,plan,cfg,groups,**real_kwargs))
+                    try:
+                        await traffic
+                    finally:
+                        if not benign_start.done():attack_task.cancel()
+                    try:
+                        await attack_task
+                    except asyncio.CancelledError:
+                        pass
+                    finally:
+                        if not attack_task.done():attack_task.cancel()
+                        await asyncio.gather(attack_task,return_exceptions=True)
                 else:
                     if before_start:await self.real(rid,plan,cfg,groups,before_start=before_start)
                     else:await self.real(rid,plan,cfg,groups)
@@ -327,7 +409,7 @@ class Manager:
             await asyncio.sleep(.1)
         r['elapsed_s']=elapsed
 
-    async def real(self,rid,plan,cfg,groups,before_start=None):
+    async def real(self,rid,plan,cfg,groups,before_start=None,on_start=None):
         r=self.runs[rid]
         for group in groups.values():
             context=group['context']
@@ -403,6 +485,7 @@ class Manager:
         if before_start:await before_start()
         if self.stops[rid].is_set():return
         start=time.time()+cfg.get('start_lead_s',3)
+        if on_start:on_start(start)
         self.origins[rid]=time.monotonic()+start-time.time()
         r.update(status='running',started_at=start)
         for proc,group in prepared:
@@ -493,6 +576,68 @@ class Manager:
             self.log(rid,'Stop requested')
         return self.snapshot(rid)
 
+    async def apply_detection_mode(self,rid,cfg,mode):
+        """D1: switch the real controller to `mode` and verify it with TWO
+        independent pieces of evidence before any traffic/attack starts.
+        Raising here fails the run in preparation -- it never lets a run
+        proceed under an unconfirmed (or wrong) detection mode."""
+        self.log(rid,f'Applying detection mode: {mode}')
+        log_evidence=await DetectionModeControl(cfg).apply(mode)
+        # Captured AFTER apply() returns, not before: apply() itself is
+        # the SSH round trip that writes the drop-in and restarts
+        # ryu-manager, which realistically takes several seconds -- long
+        # enough for multiple old-mode cycles to still be emitted after a
+        # "before" timestamp. Every cycle this picked up was then
+        # guaranteed stale, not a rare boundary race: verified live
+        # against the real lab, every run failed the same way (reading
+        # the PREVIOUS mode, not a mismatch) until this was moved here.
+        since=time.time()
+        audit_evidence=await self.verify_detection_mode_in_audit(since,mode)
+        self.runs[rid]['detection_mode_verification']=dict(requested=mode,log_evidence=log_evidence,audit_cycle_evidence=audit_evidence)
+        await self.persist_async(rid)
+        self.log(rid,f'Detection mode verified via STARTUP log and LAB_AUDIT cycle snapshot: {mode}')
+
+    async def verify_detection_mode_in_audit(self,since,mode,timeout=60):
+        """Second evidence: DETECTION_CROSS_DOMAIN_CORRELATION in the
+        `thresholds` snapshot of the first LAB_AUDIT kind=cycle record
+        emitted after the restart requested at `since`. Independent of
+        apply()'s own STARTUP-log check (first evidence) -- a different
+        code path (the persistent audit SSH stream, not the restart's own
+        SSH round trip) reading a different artifact (the detector's own
+        per-cycle threshold snapshot, not its startup banner)."""
+        if self.audit is None or not getattr(self.audit,'enabled',False):
+            raise RuntimeError('detection_mode verification requires the LAB_AUDIT collector (detection_audit.enabled) to be running')
+        expected=(mode=='multidomain')
+        deadline=time.monotonic()+timeout
+        while time.monotonic()<deadline:
+            cycle=next((x for x in self.audit.rows(since,time.time()+1) if x.get('kind')=='cycle'),None)
+            if cycle is not None:
+                observed=cycle.get('thresholds',{}).get('values',{}).get('DETECTION_CROSS_DOMAIN_CORRELATION')
+                if observed!=expected:
+                    raise RuntimeError(f'LAB_AUDIT cycle snapshot reports DETECTION_CROSS_DOMAIN_CORRELATION={observed!r}, expected {expected!r} for detection_mode={mode!r}')
+                return dict(event_id=cycle.get('event_id'),timestamp=cycle.get('timestamp'),value=observed)
+            await asyncio.sleep(1)
+        raise RuntimeError('No LAB_AUDIT cycle record observed after the detection-mode restart within the timeout')
+
+    def record_attack_evidence(self,rid,report):
+        """D5: auto-mark the ATTACK ground-truth window from attack_runner's
+        own per-event evidence -- never from the planned schedule. A window
+        with no event reporting packets_sent>0 gets no observed_attacks
+        entry at all (ground_truth.windows() then correctly reports those
+        windows as UNKNOWN, never silently promoting a plan to a truth)."""
+        r=self.runs[rid]
+        events=report.get('events',{})
+        r['attack_runner_report']=dict(started_at=report.get('started_at'),finished_at=report.get('finished_at'),
+            events={eid:{k:e.get(k) for k in ('packets_sent','attack_pps_target','attack_pps_actual','actual_start_s','actual_end_s','error')} for eid,e in events.items()})
+        r['attack_source_ips']=report.get('source_ips',[])
+        active=[e for e in events.values() if e.get('packets_sent',0)>0 and e.get('actual_start_s') is not None and e.get('actual_end_s') is not None]
+        if active:
+            name=(r.get('attack_plan_hash') or 'attack')[:12]
+            r['observed_attacks'].append(dict(name=name,start_s=min(e['actual_start_s'] for e in active),end_s=max(e['actual_end_s'] for e in active),annotation_source='attack_runner'))
+            self.log(rid,f'Attack window marked from attack_runner evidence: {len(active)} event(s) sent traffic')
+        else:
+            self.log(rid,'attack_runner reported no packets sent for any event; no ATTACK window marked','warning')
+
     async def shutdown(self):
         for rid in self.tasks:
             if not self.tasks[rid].done(): self.stops[rid].set()
@@ -504,7 +649,7 @@ class Manager:
         elapsed=self.elapsed(rid)
         if action=='start':
             if any(a['name']==name and a.get('end_s') is None for a in r['observed_attacks']): raise ValueError('Attack already marked active')
-            r['observed_attacks'].append(dict(name=name,start_s=elapsed,end_s=None))
+            r['observed_attacks'].append(dict(name=name,start_s=elapsed,end_s=None,annotation_source='operator_external'))
         elif action=='stop':
             matches=[a for a in r['observed_attacks'] if a['name']==name and a.get('end_s') is None]
             if not matches: raise ValueError('No active attack with this name')

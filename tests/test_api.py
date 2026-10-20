@@ -57,6 +57,20 @@ def test_auth_cross_origin_and_invalid_inputs(tmp_path):
         assert c.get('/api/plans/not-a-hash',headers=headers).status_code==400
 
 
+def test_manager_audit_wired_for_detection_mode_verification(tmp_path):
+    """Regression: D1's second detection_mode verification evidence reads
+    Manager.audit (api.py must set it to the same DetectionAuditMonitor
+    it exposes as app.state.detection_audit). Caught live 2026-10-19:
+    this wiring was documented but never actually written, so every
+    pipeline=enabled run failed in preparation with 'detection_mode
+    verification requires the LAB_AUDIT collector... to be running'
+    even with detection_audit.enabled=true in the lab config."""
+    app = create_app(tmp_path, ROOT / 'config/lab.demo.yaml')
+    with TestClient(app):
+        assert app.state.manager.audit is app.state.detection_audit
+        assert app.state.manager.audit is not None
+
+
 def test_stop_and_concurrent_run_rejected(tmp_path):
     with TestClient(create_app(tmp_path)) as c:
         response=c.post('/api/plans',json=dict(seed=1,duration_s=30,capacity_mbps=dict.fromkeys(['mobile','fixed','enterprise','peering'],100)))
