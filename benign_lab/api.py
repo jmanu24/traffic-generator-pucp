@@ -169,6 +169,7 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
             interface_cursors[rid]=rows[-1]['id']
         return rows
     audit=DetectionAuditMonitor(data,load_lab(lab_path))
+    manager.audit=audit  # D1: the second detection_mode verification evidence reads this
     audit_cursors={}
     def capture_audit(rid):
         r=manager.runs[rid]
