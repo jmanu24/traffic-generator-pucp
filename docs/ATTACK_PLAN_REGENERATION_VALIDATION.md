@@ -173,20 +173,18 @@ sin un diagnóstico adicional de solo lectura sobre el laboratorio real,
 bloqueado por el modo automático de esta sesión y que requiere tu
 permiso explícito. No seguí investigando por mi cuenta.
 
-## Addendum (2026-10-20) — hallazgo A corregido; el ≈1,9× de enterprise NO depende de él
+## Addendum (2026-10-20) — hallazgo A corregido; el ≈1,9-2× de enterprise NO depende de él (CONFIRMADO EN VIVO)
 
 Tras corregir el bug de ruta de `ThresholdControl` (ver
 [`THRESHOLD_CONTROL_PATH_FIX.md`](THRESHOLD_CONTROL_PATH_FIX.md)) y
 aplicar de verdad los umbrales calibrados al árbol real
 (`SYN_THRESHOLD=76.82`, `UDP_THRESHOLD=14515.64`,
 `ICMP_THRESHOLD=240.37`, confirmado en vivo vía un ciclo
-`LAB_AUDIT kind=cycle` fresco), revisé (solo lectura de código, sin
-reejecutar el ataque de enterprise contra el lab real) si el ≈1,9×
-observado-vs-emitido de enterprise (`observed_controller_trigger_pps`
-688,54 vs `issued_aggregate_pps` 364,89 en
-`composition1_enterprise`, dato ya capturado en
-`calibration/attack_plan_regeneration_validation.json`) se debía al
-hallazgo A.
+`LAB_AUDIT kind=cycle` fresco), revisé si el ≈1,9× observado-vs-emitido
+de enterprise (`observed_controller_trigger_pps` 688,54 vs
+`issued_aggregate_pps` 364,89 en `composition1_enterprise`, dato ya
+capturado en `calibration/attack_plan_regeneration_validation.json`,
+de ANTES de este fix) se debía al hallazgo A.
 
 **No se debe.** `detection/engine.py::_protocol_rate()` calcula
 `total_pps`/`trigger_pps` como una suma pura de `TelemetryEvent.pps`
@@ -211,11 +209,25 @@ contado dos veces, una por cada camino — el mismo tipo de problema,
 aunque un mecanismo distinto, que el bug ya corregido de "duration
 floor" de NetFlow en peering.
 
-**No confirmado con una reejecución en vivo** (habría requerido generar
-tráfico de ataque nuevo contra el lab real, fuera del alcance de "solo
-lectura" que se autorizó para este chequeo) y **no corregido aquí** —
-el prompt de la tarea de fix de `threshold_control.py` explícitamente
-pidió solo anotarlo como seguimiento, no arreglarlo, salvo que fuera
-trivial y claramente dentro de alcance; no lo es, porque tocaría
-`telemetry/openflow_adapter.py` en `orchestrator-ddos-pucp`, un archivo
-de telemetría de enterprise ajeno al bug de ruta que motivó esta tarea.
+**Confirmado con una reejecución en vivo.** Con los umbrales calibrados
+ya activos de verdad, se volvió a correr `composition1_enterprise` una
+vez más (pipeline suspendido, mismo plan/tasa que antes: 364,887 pps
+emitidos). Resultado: `observed_controller_trigger_pps` = 715,60 pps —
+razón 1,96×, esencialmente igual al 1,887-1,949× medido en las dos
+corridas previas a este fix, con los umbrales viejos (10/200/150) en
+vivo. Esto descarta por completo que el hallazgo A (umbrales no
+aplicados) fuera la causa — tiene sentido, porque `trigger_pps` es una
+suma de tasas en crudo, calculada antes e independientemente de contra
+qué umbral se compare después. El pipeline y el lease quedaron
+restaurados limpiamente tras esta corrida.
+
+Es un sobre-conteo real y ahora confirmado (~2×) en el camino de
+telemetría/correlación de enterprise, probablemente análogo al bug ya
+corregido de "duration floor" de NetFlow en peering pero en un
+colector distinto (`telemetry/openflow_adapter.py` en
+`orchestrator-ddos-pucp`, no el NetFlow de peering) — merece una
+investigación dedicada propia. **No corregido aquí**: el prompt de la
+tarea de fix de `threshold_control.py` pidió explícitamente solo
+anotarlo como seguimiento, no arreglarlo, salvo que fuera trivial y
+claramente dentro de alcance; no lo es, porque tocaría un archivo de
+telemetría de enterprise ajeno al bug de ruta que motivó esta tarea.

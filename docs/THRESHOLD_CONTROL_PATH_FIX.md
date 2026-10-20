@@ -94,8 +94,51 @@ fix — confirmado comparando ambas ramas) pasa igual que antes.
 
 ## Lo que este fix NO hizo (y por qué)
 
-Este fix solo corrige la ruta; **no** reaplica los umbrales calibrados
-al árbol real. Eso requiere tocar el lab real (SSH + reinicio de
-`ryu-manager`) y se hizo como un paso separado, con confirmación
-explícita antes de cada acción remota — ver el reporte final de esta
-tarea para los resultados numéricos de esa reaplicación.
+Este fix en sí mismo solo corrige la ruta; no reaplica umbrales por sí
+solo. La reaplicación real se hizo como un paso separado, con
+confirmación explícita antes de la acción remota (ver más abajo).
+
+## Reaplicación real (2026-10-20, con confirmación explícita)
+
+Con el fix ya en el árbol, se reaplicaron los umbrales ya calibrados
+por `THRESHOLD_CALIBRATION` (nunca antes aplicados de verdad — ver la
+advertencia al inicio de `THRESHOLD_CALIBRATION_RESULT.md`) contra el
+path correcto:
+
+- Lectura previa (vía el `read()` ya corregido): `SYN_THRESHOLD=10`,
+  `UDP_THRESHOLD=200`, `ICMP_THRESHOLD=150` — confirma que el
+  controlador seguía sin calibrar antes de este paso.
+- `apply()` con `{SYN_THRESHOLD: 76.82, UDP_THRESHOLD: 14515.64,
+  ICMP_THRESHOLD: 240.37}`: `config_sha256` final
+  `1ad54993ad3b41e2f2a94755c19a6da8368d47eb225a9008f54d2e6927648708`.
+- Confirmado en vivo por tres vías independientes: (1)
+  `/home/labadmin/orchestrator-ddos-pucp/config/settings.py` en disco
+  tiene los tres valores nuevos; (2) `systemctl show ryu-manager`
+  reporta `active` con un `ExecMainStartTimestamp` que coincide con el
+  momento de la reaplicación (reinicio real, no solo reportado); (3) un
+  ciclo `LAB_AUDIT kind=cycle` fresco, leído directamente de
+  `/var/log/ryu-manager.log`, reporta
+  `thresholds.values.SYN_THRESHOLD=76.82`, `UDP_THRESHOLD=14515.64`,
+  `ICMP_THRESHOLD=240.37` — el motor de detección en ejecución ya usa
+  los valores calibrados. `DECISION_THRESHOLD` (1,5) y
+  `DETECTION_CROSS_DOMAIN_CORRELATION` (multidomain) quedaron intactos,
+  como se pidió.
+
+Nota de concurrencia: la primera invocación de `apply()` desde esta
+tarea chocó con el guard de hash (`'Threshold configuration changed;
+reload before applying'`) porque otra sesión aplicó los mismos valores
+casi al mismo tiempo contra el mismo controlador; el estado final
+verificado arriba es el correcto y único resultado — no hubo dos
+escrituras conflictivas, solo una carrera benigna entre dos lecturas.
+
+## Hallazgo de seguimiento: el ≈2× de enterprise es real y no depende de esto
+
+Ver el addendum de 2026-10-20 en
+[`ATTACK_PLAN_REGENERATION_VALIDATION.md`](ATTACK_PLAN_REGENERATION_VALIDATION.md#addendum-2026-10-20--hallazgo-a-corregido-el-19-2-de-enterprise-no-depende-de-él-confirmado-en-vivo):
+con los umbrales ya calibrados en vivo, una reejecución de
+`composition1_enterprise` sigue mostrando ~1,96× de sobre-conteo
+(715,60 pps observados vs 364,89 emitidos) -- confirma que el
+hallazgo A nunca fue la causa de esa discrepancia; el sospechoso real
+es un posible doble conteo en `telemetry/openflow_adapter.py`
+(`orchestrator-ddos-pucp`), no corregido aquí (fuera de alcance de
+esta tarea).
