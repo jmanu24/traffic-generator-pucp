@@ -30,6 +30,29 @@ class FakeAudit:
                      thresholds={'values': {'DETECTION_CROSS_DOMAIN_CORRELATION': self.value}})]
 
 
+class StaleThenFreshAudit:
+    """Reproduces the exact live-lab bug (2026-10-19): a cycle emitted by
+    the OLD mode just before a slow restart can still have timestamp >=
+    a `since` captured too early, and gets picked up as if it were
+    post-restart evidence. stale_at sits strictly between the request
+    and SlowControl.apply()'s return -- only correct if `since` is
+    captured AFTER apply() returns, not before."""
+    def __init__(self, stale_at, stale_value, fresh_value):
+        self.enabled = True
+        self.stale_at = stale_at
+        self.stale_value = stale_value
+        self.fresh_value = fresh_value
+
+    def rows(self, start, end, after=0):
+        rows = []
+        if start <= self.stale_at <= end:
+            rows.append(dict(kind='cycle', event_id='stale', timestamp=self.stale_at,
+                              thresholds={'values': {'DETECTION_CROSS_DOMAIN_CORRELATION': self.stale_value}}))
+        rows.append(dict(kind='cycle', event_id='fresh', timestamp=end,
+                          thresholds={'values': {'DETECTION_CROSS_DOMAIN_CORRELATION': self.fresh_value}}))
+        return rows
+
+
 class FakeGuard:
     def __init__(self, cfg, rid, duration): self.rid = rid
     async def enter(self): return {'active': True}
@@ -88,6 +111,35 @@ def test_apply_detection_mode_succeeds_with_matching_audit_evidence(tmp_path, mo
     assert applied == [mode]
     assert r['detection_mode_verification']['requested'] == mode
     assert r['detection_mode_verification']['audit_cycle_evidence']['value'] == (mode == 'multidomain')
+
+
+def test_since_is_captured_after_apply_not_before_the_slow_restart(tmp_path, monkeypatch):
+    """Live-lab regression (2026-10-19): every one of 4 consecutive real
+    calibration runs failed verification, always reading the PREVIOUS
+    mode -- not a rare boundary race. Root cause: `since` was captured
+    before calling DetectionModeControl.apply(), which is itself the
+    slow SSH restart; any old-mode cycle emitted during that restart
+    still had timestamp >= that too-early `since` and got picked up as
+    if it were post-restart evidence. Fixed by capturing `since` after
+    apply() returns. This reproduces it with a deliberately slow apply()
+    and a stale cycle timestamped to land squarely in the gap."""
+    m = Manager(tmp_path / 'runs')
+    cfg = base_cfg()
+    t0 = time.time()
+    stale_at = t0 + 0.03
+    class SlowControl:
+        def __init__(self, cfg): pass
+        async def apply(self, requested):
+            await asyncio.sleep(0.08)  # stale_at falls inside this window
+            return dict(applied=requested, controller_restarted=True)
+    monkeypatch.setattr(runner, 'DetectionModeControl', SlowControl)
+    m.audit = StaleThenFreshAudit(stale_at=stale_at, stale_value=False, fresh_value=True)
+    bare_run(m, 'x')
+    async def run():
+        await m.apply_detection_mode('x', cfg, 'multidomain')
+        return m.runs['x']
+    r = asyncio.run(run())  # must NOT raise on the stale (False) cycle
+    assert r['detection_mode_verification']['audit_cycle_evidence']['value'] is True
 
 
 def test_isolated_request_cannot_be_verified_against_a_multidomain_audit_record(tmp_path, monkeypatch):

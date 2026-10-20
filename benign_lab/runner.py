@@ -581,10 +581,18 @@ class Manager:
         independent pieces of evidence before any traffic/attack starts.
         Raising here fails the run in preparation -- it never lets a run
         proceed under an unconfirmed (or wrong) detection mode."""
-        requested_at=time.time()
         self.log(rid,f'Applying detection mode: {mode}')
         log_evidence=await DetectionModeControl(cfg).apply(mode)
-        audit_evidence=await self.verify_detection_mode_in_audit(requested_at,mode)
+        # Captured AFTER apply() returns, not before: apply() itself is
+        # the SSH round trip that writes the drop-in and restarts
+        # ryu-manager, which realistically takes several seconds -- long
+        # enough for multiple old-mode cycles to still be emitted after a
+        # "before" timestamp. Every cycle this picked up was then
+        # guaranteed stale, not a rare boundary race: verified live
+        # against the real lab, every run failed the same way (reading
+        # the PREVIOUS mode, not a mismatch) until this was moved here.
+        since=time.time()
+        audit_evidence=await self.verify_detection_mode_in_audit(since,mode)
         self.runs[rid]['detection_mode_verification']=dict(requested=mode,log_evidence=log_evidence,audit_cycle_evidence=audit_evidence)
         await self.persist_async(rid)
         self.log(rid,f'Detection mode verified via STARTUP log and LAB_AUDIT cycle snapshot: {mode}')
