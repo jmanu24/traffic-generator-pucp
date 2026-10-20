@@ -172,3 +172,50 @@ A) y una ausencia de señal de mobile (hallazgo B) que no puedo resolver
 sin un diagnóstico adicional de solo lectura sobre el laboratorio real,
 bloqueado por el modo automático de esta sesión y que requiere tu
 permiso explícito. No seguí investigando por mi cuenta.
+
+## Addendum (2026-10-20) — hallazgo A corregido; el ≈1,9× de enterprise NO depende de él
+
+Tras corregir el bug de ruta de `ThresholdControl` (ver
+[`THRESHOLD_CONTROL_PATH_FIX.md`](THRESHOLD_CONTROL_PATH_FIX.md)) y
+aplicar de verdad los umbrales calibrados al árbol real
+(`SYN_THRESHOLD=76.82`, `UDP_THRESHOLD=14515.64`,
+`ICMP_THRESHOLD=240.37`, confirmado en vivo vía un ciclo
+`LAB_AUDIT kind=cycle` fresco), revisé (solo lectura de código, sin
+reejecutar el ataque de enterprise contra el lab real) si el ≈1,9×
+observado-vs-emitido de enterprise (`observed_controller_trigger_pps`
+688,54 vs `issued_aggregate_pps` 364,89 en
+`composition1_enterprise`, dato ya capturado en
+`calibration/attack_plan_regeneration_validation.json`) se debía al
+hallazgo A.
+
+**No se debe.** `detection/engine.py::_protocol_rate()` calcula
+`total_pps`/`trigger_pps` como una suma pura de `TelemetryEvent.pps`
+sobre la ventana de correlación — los umbrales (`SYN_THRESHOLD` etc.)
+solo se usan después, en `_classify()`, para compararlos contra ese
+agregado ya calculado; no participan en absoluto en cómo se mide el
+agregado. Recalibrar los umbrales no podía cambiar, y no cambió, este
+número.
+
+Lo que sí es sospechoso, revisando `telemetry/openflow_adapter.py`
+(el adaptador de enterprise): genera un `TelemetryEvent` por cada flujo
+reportado en `on_flow_stats()` (polling periódico de
+`OFPFlowStatsReply`, la tasa acumulada de la regla de flujo instalada)
+**y además** un `TelemetryEvent` por cada paquete nuevo en
+`on_packet_in()` (ventana propia de `DDoSCollector`) para el mismo par
+origen/destino — dos caminos de telemetría independientes que pueden
+estar describiendo la misma ráfaga de tráfico dentro de la misma
+ventana de correlación, sin ninguna deduplicación visible entre ellos
+antes de llegar a `_protocol_rate()`. Un ≈1,9× (casi el doble) es
+coherente con que la mayor parte del tráfico de ataque esté siendo
+contado dos veces, una por cada camino — el mismo tipo de problema,
+aunque un mecanismo distinto, que el bug ya corregido de "duration
+floor" de NetFlow en peering.
+
+**No confirmado con una reejecución en vivo** (habría requerido generar
+tráfico de ataque nuevo contra el lab real, fuera del alcance de "solo
+lectura" que se autorizó para este chequeo) y **no corregido aquí** —
+el prompt de la tarea de fix de `threshold_control.py` explícitamente
+pidió solo anotarlo como seguimiento, no arreglarlo, salvo que fuera
+trivial y claramente dentro de alcance; no lo es, porque tocaría
+`telemetry/openflow_adapter.py` en `orchestrator-ddos-pucp`, un archivo
+de telemetría de enterprise ajeno al bug de ruta que motivó esta tarea.
