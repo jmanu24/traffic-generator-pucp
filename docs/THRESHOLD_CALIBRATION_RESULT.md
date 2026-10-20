@@ -2,19 +2,26 @@
 
 Calibración completa, aplicada al controlador real el 2026-10-20.
 
-> **ADVERTENCIA (2026-10-20, posterior):** `ThresholdControl.apply()`
-> tenía un bug de ruta (ver
+> **NOTA (2026-10-20, posterior) — corrige una advertencia previa:**
+> `ThresholdControl.apply()` tenía un bug de ruta (ver
 > [`THRESHOLD_CONTROL_PATH_FIX.md`](THRESHOLD_CONTROL_PATH_FIX.md)) que
 > hacía que el "Paso 4 — aplicación" de este documento escribiera los
-> umbrales calibrados en un árbol de código muerto, nunca en el que
-> `ryu-manager` realmente importa. El controlador estuvo corriendo con
-> los umbrales **viejos** (SYN=10/UDP=200/ICMP=150) todo este tiempo, no
-> con los calibrados de abajo. Esto significa que toda validación de
-> FPR/FNR de este documento que se ejecutó *después* del "Paso 4"
-> asumiendo que los umbrales calibrados ya estaban en vivo **debe
-> considerarse no verificada** hasta que se repita con los umbrales
-> realmente aplicados — ver el reporte de la tarea de fix del path para
-> si esa reaplicación real ya se hizo y con qué resultado numérico.
+> umbrales calibrados en un árbol de código muerto; el controlador
+> estuvo corriendo con los umbrales viejos (SYN=10/UDP=200/ICMP=150)
+> hasta que se corrigió el path y se reaplicó de verdad (confirmado en
+> vivo vía `LAB_AUDIT`). Una nota anterior aquí decía que esto dejaba
+> "no verificada" la validación de FPR/FNR de abajo — **eso era
+> incorrecto**. `benign_lab/threshold_replay.py` (Paso 4) es una
+> **réplica pura, offline**: toma las tasas crudas ya capturadas por la
+> instrumentación de Paso 1 (`observed_rates`, que no depende de
+> `SYN_THRESHOLD` en absoluto) y el valor de umbral **propuesto** como
+> parámetro explícito — nunca lee ni depende del umbral real que el
+> controlador tuviera en vivo al momento de la captura. Se verificó
+> reproduciendo exactamente los números de este documento (umbrales
+> propuestos, FPR de entrenamiento 1,67 %/8 de 480, FPR de validación
+> 0,0 %/0 de 960) a partir de los mismos datos crudos ya guardados, sin
+> tocar el controlador — la reproducción fue bit a bit idéntica. No se
+> requiere repetir nada de este documento.
 
 ## Resumen
 
