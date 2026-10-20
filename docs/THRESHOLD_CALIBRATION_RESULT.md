@@ -2,6 +2,20 @@
 
 Calibración completa, aplicada al controlador real el 2026-10-20.
 
+> **ADVERTENCIA (2026-10-20, posterior):** `ThresholdControl.apply()`
+> tenía un bug de ruta (ver
+> [`THRESHOLD_CONTROL_PATH_FIX.md`](THRESHOLD_CONTROL_PATH_FIX.md)) que
+> hacía que el "Paso 4 — aplicación" de este documento escribiera los
+> umbrales calibrados en un árbol de código muerto, nunca en el que
+> `ryu-manager` realmente importa. El controlador estuvo corriendo con
+> los umbrales **viejos** (SYN=10/UDP=200/ICMP=150) todo este tiempo, no
+> con los calibrados de abajo. Esto significa que toda validación de
+> FPR/FNR de este documento que se ejecutó *después* del "Paso 4"
+> asumiendo que los umbrales calibrados ya estaban en vivo **debe
+> considerarse no verificada** hasta que se repita con los umbrales
+> realmente aplicados — ver el reporte de la tarea de fix del path para
+> si esa reaplicación real ya se hizo y con qué resultado numérico.
+
 ## Resumen
 
 | Protocolo | Umbral anterior | **Umbral aplicado** | Cuantil (q=0,999) | Margen |
