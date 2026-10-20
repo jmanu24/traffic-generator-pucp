@@ -49,36 +49,61 @@ composiciones** — confirma que el método de medición (lanzar el plan,
 capturar `LAB_AUDIT kind=cycle` en la ventana real del ataque) es
 correcto; los otros tres dominios muestran problemas reales distintos:
 
-### A — la configuración en vivo del controlador NO es la calibrada
+### A — CONFIRMADO: `ThresholdControl.apply()` edita un árbol de código
+abandonado, nunca el que corre de verdad — la calibración de Task B
+**nunca llegó al controlador real**
 
-El primer registro `LAB_AUDIT` capturado en cada ventana trae
-`thresholds.values.SYN_THRESHOLD = 10` (el valor **original, anterior a
-la calibración**, no 76,82) y `thresholds.hash = 50a2113787ea7...569bed`
-— **no coincide** con `config_sha256` que `THRESHOLD_CALIBRATION_RESULT.md`
-registró como aplicado (`e95d70ec...c7e7b`). El controlador en vivo hoy
-no está corriendo con los umbrales calibrados el 2026-10-20, por una
-razón que no pude determinar con certeza: `ThresholdControl.apply()`
-edita `/opt/Tesis_Controller/config/settings.py` directamente en disco
-(no una variable de entorno de systemd), así que debería persistir a
-través de reinicios — incluido el reinicio que mi propio script hizo al
-cambiar `detection_mode` hoy. Si `/opt/Tesis_Controller` no es el mismo
-árbol que el proceso real importa (ver nota de contexto: el controlador
-real corre desde `/home/labadmin/orchestrator-ddos-pucp` vía
-`PYTHONPATH`), la calibración nunca habría tocado el archivo que el
-proceso lee, y el 0 % de FPR en validación de `THRESHOLD_CALIBRATION_RESULT.md`
-sería compatible con los umbrales viejos (10/200/150) tanto como con los
-nuevos. **No alcancé a confirmarlo**: el siguiente paso de diagnóstico
-(leer `/opt/Tesis_Controller` vs. la ruta real del proceso, `systemctl
-show ryu-manager -p ExecStart` en el controlador) fue bloqueado por el
-clasificador de modo automático de esta sesión ("Production Reads") y
-necesita tu permiso explícito para un comando de solo lectura.
+Diagnóstico de solo lectura (con tu permiso explícito), resultado
+inequívoco:
 
-Esto probablemente también explica el **≈1,9× en enterprise** (no 2× ni
-1×; `688,54/364,89=1,887`, `134,77/69,15=1,949`) si es el mismo mecanismo
-de doble conteo que el bug de duración de `peering` que ya se corrigió
-en Paso 1-3, pero en enterprise — **sin umbrales calibrados en vivo no
-puedo distinguir "doble conteo real" de "otro artefacto de
-configuración desincronizada"**.
+```
+systemctl show ryu-manager -p Environment -p WorkingDirectory -p ExecStart
+  ExecStart = /opt/Tesis_Controller/venv/bin/ryu-manager ... controller/ryu_controller_2.py
+  WorkingDirectory = /home/labadmin/orchestrator-ddos-pucp
+  Environment = PYTHONPATH=/home/labadmin/orchestrator-ddos-pucp ...
+
+grep SYN_THRESHOLD /opt/Tesis_Controller/config/settings.py
+  SYN_THRESHOLD = 76.82      # <- lo que ThresholdControl.apply() escribió
+
+grep SYN_THRESHOLD /home/labadmin/orchestrator-ddos-pucp/config/settings.py
+  SYN_THRESHOLD = 10         # <- lo que el proceso real IMPORTA (PYTHONPATH)
+
+readlink -f /opt/Tesis_Controller
+  /opt/Tesis_Controller       # no es un symlink; es un árbol real y aparte,
+                              # con su propio .git, viejo (log.log de sep-14),
+                              # que nada importa en producción
+```
+
+`ryu-manager` corre el binario del venv que vive bajo `/opt/Tesis_Controller`,
+pero su `PYTHONPATH`/`WorkingDirectory` apuntan a
+`/home/labadmin/orchestrator-ddos-pucp` — ahí es de donde Python
+realmente importa `config.settings`. `benign_lab/threshold_control.py`
+tiene **hardcodeada** la ruta `/opt/Tesis_Controller/config/settings.py`
+(línea 12 y 26) — un árbol que el proceso real nunca lee. El `git log`
+de `/home/labadmin/orchestrator-ddos-pucp` en el controlador confirma
+que su HEAD sigue en `3e2610c` (el fix de duración de peering, el commit
+anterior a la calibración) — **Paso 4 de `THRESHOLD_CALIBRATION` nunca
+tocó el árbol real**, a pesar de que `ThresholdControl.apply()` reportó
+`controller_restarted: true` y un `config_sha256` nuevo: ese reinicio
+fue real, pero reinició el controlador con los umbrales **viejos**
+(10/200/150) porque el archivo que de verdad importa nunca cambió.
+
+Esto también explica el **≈1,9× en enterprise** de la tabla de arriba
+si corresponde al mismo mecanismo de doble conteo que el bug de duración
+de `peering` que ya se corrigió en Paso 1-3 (ese fix también fue a
+`/home/labadmin/orchestrator-ddos-pucp`, así que si existe un bug
+análogo en el colector de enterprise, sigue sin corregir en el árbol
+real) — no confirmado, pero coherente.
+
+**Esto es ajeno al prompt de esta tarea (regeneración de planes) y no lo
+corregí yo mismo** — ni el path hardcodeado en `threshold_control.py` ni
+una reaplicación de los umbrales al árbol real, porque ambos son
+cambios de infraestructura/calibración fuera del alcance de "regenera
+los planes de ataque", y la regla "no cambies detección/decisión/
+mitigación salvo que el prompt lo pida explícitamente" aplica también a
+re-aplicar una calibración anterior sin que tú lo pidas aquí. Avísame
+cómo quieres proceder (¿otra tarea dedicada a corregir
+`threshold_control.py` y volver a aplicar Paso 4 contra el árbol real?).
 
 ### B — la señal SYN de mobile no aparece en `observed_rates`
 
