@@ -6,6 +6,7 @@ from benign_lab.planner import generate,load_profiles,save_plan
 
 class FakeDetectionModeControl:
  def __init__(self,cfg):pass
+ async def read(self):return {'override':None}
  async def apply(self,mode):return dict(applied=mode,controller_restarted=True)
 
 class FakeAudit:

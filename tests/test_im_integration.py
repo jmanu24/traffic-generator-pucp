@@ -98,6 +98,7 @@ def test_apply_detection_mode_succeeds_with_matching_audit_evidence(tmp_path, mo
     applied = []
     class Control:
         def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
         async def apply(self, requested):
             applied.append(requested)
             return dict(applied=requested, controller_restarted=True)
@@ -111,6 +112,59 @@ def test_apply_detection_mode_succeeds_with_matching_audit_evidence(tmp_path, mo
     assert applied == [mode]
     assert r['detection_mode_verification']['requested'] == mode
     assert r['detection_mode_verification']['audit_cycle_evidence']['value'] == (mode == 'multidomain')
+
+
+@pytest.mark.parametrize('mode', ['isolated', 'multidomain'])
+def test_apply_detection_mode_skips_restart_when_already_in_requested_mode(tmp_path, monkeypatch, mode):
+    """D7-pilot: a campaign that groups consecutive runs by detection_mode
+    (im_campaign.build_schedule) must not restart ryu-manager before every
+    single one of them -- only the first run of a mode group should pay
+    for the restart. apply() itself must never be called when .read()
+    already reports the requested mode; the audit-based second evidence
+    is still collected (cheap, no restart)."""
+    m = Manager(tmp_path / 'runs')
+    cfg = base_cfg()
+    applied = []
+    class Control:
+        def __init__(self, cfg): pass
+        async def read(self): return {'override': mode}
+        async def apply(self, requested):
+            applied.append(requested)
+            return dict(applied=requested, controller_restarted=True)
+    monkeypatch.setattr(runner, 'DetectionModeControl', Control)
+    m.audit = FakeAudit(value=(mode == 'multidomain'))
+    bare_run(m, 'x')
+    async def run():
+        await m.apply_detection_mode('x', cfg, mode)
+        return m.runs['x']
+    r = asyncio.run(run())
+    assert applied == []  # apply() (and its restart) was never called
+    assert r['detection_mode_verification']['requested'] == mode
+    assert r['detection_mode_verification']['log_evidence'] == dict(applied=mode, controller_restarted=False, already_applied=True)
+    assert r['detection_mode_verification']['audit_cycle_evidence']['value'] == (mode == 'multidomain')
+
+
+def test_apply_detection_mode_still_restarts_when_mode_differs_from_current(tmp_path, monkeypatch):
+    """The skip is exact-match only: a different current mode must still
+    go through apply()/restart, never silently skipped."""
+    m = Manager(tmp_path / 'runs')
+    cfg = base_cfg()
+    applied = []
+    class Control:
+        def __init__(self, cfg): pass
+        async def read(self): return {'override': 'isolated'}
+        async def apply(self, requested):
+            applied.append(requested)
+            return dict(applied=requested, controller_restarted=True)
+    monkeypatch.setattr(runner, 'DetectionModeControl', Control)
+    m.audit = FakeAudit(value=True)
+    bare_run(m, 'x')
+    async def run():
+        await m.apply_detection_mode('x', cfg, 'multidomain')
+        return m.runs['x']
+    r = asyncio.run(run())
+    assert applied == ['multidomain']
+    assert r['detection_mode_verification']['log_evidence'] == dict(applied='multidomain', controller_restarted=True)
 
 
 def test_since_is_captured_after_apply_not_before_the_slow_restart(tmp_path, monkeypatch):
@@ -129,6 +183,7 @@ def test_since_is_captured_after_apply_not_before_the_slow_restart(tmp_path, mon
     stale_at = t0 + 0.03
     class SlowControl:
         def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
         async def apply(self, requested):
             await asyncio.sleep(0.08)  # stale_at falls inside this window
             return dict(applied=requested, controller_restarted=True)
@@ -151,6 +206,7 @@ def test_isolated_request_cannot_be_verified_against_a_multidomain_audit_record(
     cfg = base_cfg()
     class Control:
         def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
         async def apply(self, requested):
             return dict(applied=requested, controller_restarted=True)
     monkeypatch.setattr(runner, 'DetectionModeControl', Control)
@@ -167,6 +223,7 @@ def test_apply_detection_mode_requires_audit_collector_enabled(tmp_path, monkeyp
     cfg = base_cfg()
     class Control:
         def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
         async def apply(self, requested): return dict(applied=requested)
     monkeypatch.setattr(runner, 'DetectionModeControl', Control)
     m.audit = None
@@ -194,6 +251,7 @@ def test_full_run_fails_in_preparation_on_detection_mode_mismatch(tmp_path, monk
     monkeypatch.setattr(runner.Manager, 'real', real)
     class Control:
         def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
         async def apply(self, requested): return dict(applied=requested, controller_restarted=True)
     monkeypatch.setattr(runner, 'DetectionModeControl', Control)
     p, f, m = plan_and_manager(tmp_path)
@@ -216,6 +274,7 @@ def test_full_run_verifies_mode_then_proceeds_to_traffic(tmp_path, monkeypatch):
     monkeypatch.setattr(runner.Manager, 'real', real)
     class Control:
         def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
         async def apply(self, requested): return dict(applied=requested, controller_restarted=True)
     monkeypatch.setattr(runner, 'DetectionModeControl', Control)
     p, f, m = plan_and_manager(tmp_path)

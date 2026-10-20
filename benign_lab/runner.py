@@ -580,9 +580,24 @@ class Manager:
         """D1: switch the real controller to `mode` and verify it with TWO
         independent pieces of evidence before any traffic/attack starts.
         Raising here fails the run in preparation -- it never lets a run
-        proceed under an unconfirmed (or wrong) detection mode."""
+        proceed under an unconfirmed (or wrong) detection mode.
+
+        D7-pilot: skips DetectionModeControl.apply() (and therefore the
+        ryu-manager restart it performs unconditionally) when .read()
+        already reports the requested mode -- a campaign that groups runs
+        by mode (im_campaign.build_schedule) would otherwise restart the
+        real controller before every single lab-enabled run, including
+        consecutive runs that request the SAME mode. The second, audit-based
+        evidence is still collected every time (cheap, no restart, confirms
+        the mode did not silently drift since the last run)."""
         self.log(rid,f'Applying detection mode: {mode}')
-        log_evidence=await DetectionModeControl(cfg).apply(mode)
+        control=DetectionModeControl(cfg)
+        current=await control.read()
+        if current.get('override')==mode:
+            log_evidence=dict(applied=mode,controller_restarted=False,already_applied=True)
+            self.log(rid,f'Detection mode already {mode}; skipping restart')
+        else:
+            log_evidence=await control.apply(mode)
         # Captured AFTER apply() returns, not before: apply() itself is
         # the SSH round trip that writes the drop-in and restarts
         # ryu-manager, which realistically takes several seconds -- long
