@@ -30,7 +30,7 @@ panel (`eligible=False`, con `exclusion_reasons`) y en
 `pilot_manifest.attempt1-404-plan-not-found.json` (el intento previo, que
 falló por completo antes de llegar al laboratorio, también se conservó).
 
-## 2. Hallazgo bloqueante: la agrupación automática de `experimental_analytics.py` no empareja casi ninguna semilla
+## 2. Hallazgo bloqueante — encontrado y **corregido** en `detection_evaluation.py`
 
 `POST /api/analytics/report` sobre las 60 corridas produjo **38 grupos**
 y solo **5 `group_comparisons`** — y los 5 son pares dentro de la
@@ -39,31 +39,58 @@ que el reporte automático de la tesis (la vía que
 `docs/IM_COMPARISON_DESIGN.md` da por sentada) reportara casi todo como
 "no comparable" para cualquier campaña con N>1 semilla real.
 
-**Causa, aislada comparando el campo `grouping` de dos corridas que
-deberían haber emparejado** (`seed=201` vs `seed=202`, mismo
-`plan_hash`/`execution_hash`/`attack_plan_hash`/`detection_mode`): el
-único campo que difiere es `policy` — la lista ordenada de hashes de
-`threshold_snapshots` que `detection_evaluation.evaluate()` recoge de
-los ciclos `LAB_AUDIT` dentro de la ventana de la corrida. Una corrida
-vio **un solo** hash de política durante toda su ventana; la otra vio
-**dos** (uno de ellos coincide con el de la primera). Es decir: durante
-al menos una corrida, el controlador reportó dos snapshots de
-configuración distintos dentro de la misma ventana de 180s — ya sea un
-ciclo residual justo después de un reinicio de `ryu-manager` (el mismo
-patrón de "ciclo obsoleto" ya corregido una vez para
-`apply_detection_mode`'s propia verificación, pero aquí dentro de
-`detection_evaluation.evaluate()`, un camino de código distinto que
-nunca se tocó), o un reinicio genuino ocurriendo más cerca del inicio
-de la corrida de lo esperado.
+**Causa raíz, confirmada contra los datos crudos exportados** (`seed=201`
+vs `seed=202`, mismo `plan_hash`/`execution_hash`/`attack_plan_hash`/
+`detection_mode`): el campo `policy` del `grouping` — la lista ordenada
+de hashes de `threshold_snapshots` que `detection_evaluation.evaluate()`
+recoge — difería porque `evaluate()` escaneaba **`records` completo, sin
+filtrar por la ventana de la corrida**, mientras que
+`detection_events.jsonl` (de donde viene `records`) se captura desde
+`created_at` (inicio de la preparación), no desde `started_at` (inicio
+real del tráfico) — por diseño, para no perder telemetría de preparación.
+Confirmado con los datos crudos de la corrida `20261020T161819-c3ade1b9`
+(semilla 202, C3, composition1_enterprise): un ciclo a **45.8s antes**
+de `started_at`, con `DETECTION_CROSS_DOMAIN_CORRELATION=True`
+(el modo de la corrida ANTERIOR, todavía visible mientras el reinicio de
+`ryu-manager` del cambio de modo terminaba), se colaba en
+`threshold_snapshots` junto con el hash correcto y posterior
+(`DETECTION_CROSS_DOMAIN_CORRELATION=False`, el modo real de esa
+corrida). Mismo patrón de "ciclo obsoleto" ya corregido una vez para la
+propia verificación de `apply_detection_mode()` (`runner.py`, commit
+anterior de esta rama) — pero en un camino de código completamente
+distinto (`detection_evaluation.evaluate()`, usado para el análisis
+posterior, no para la verificación en vivo) que nunca se había tocado.
 
-**No se investigó más a fondo ni se corrigió en esta sesión** — toca
-`detection_evaluation.py`/`experiment_audit.py` (posiblemente
-`orchestrator-ddos-pucp`), y el punto de control original pedía
-reportar el piloto, no iterar sobre él. **Se señala aquí explícitamente
-como el problema más importante que debe resolverse antes de la
-campaña**: sin esto, cada comparación M-I tendría que emparejarse a
-mano (como se hizo para este informe, ver §3) en vez de confiar en
-`/api/analytics/report`.
+**Corregido** (`benign_lab/detection_evaluation.py`, esta rama): el
+cálculo de `policies`/`threshold_snapshots` ahora usa únicamente los
+registros dentro de `[started_at, started_at+duration_s)` — el mismo
+filtro que `buckets` (la agrupación por ventana de 5s) ya aplicaba un
+par de líneas arriba, simplemente reutilizado en vez de escanear
+`records` sin filtrar. `tests/test_detection_evaluation.py::
+test_pre_start_stale_cycle_never_counts_as_a_policy_change` reproduce
+exactamente el patrón encontrado (confirmé que falla sin el fix y pasa
+con él).
+
+**Validación contra los datos reales del piloto** (recomputando
+`evaluate()` localmente, con el fix, sobre las 52 corridas válidas,
+exportadas del servidor en vivo): `policy_changed_within_capture` pasó
+de aparecer intermitentemente a **0/52**; de los 20 grupos
+(condición×escenario), **17/20 quedaron con un único hash de política
+consistente entre las 3 semillas** (antes del fix, solo 2/20 lo
+lograban por pura coincidencia). Los 3 que siguen variando son **C2**
+(`composition1_enterprise`, `composition1_fixed`, `composition3`) — y
+eso es **esperado, no un bug**: C2 corre con `pipeline=baseline` y
+`detection_mode=None` ("modo irrelevante mientras el pipeline está
+suspendido", `im_campaign.py`/`pilot_schedule.py`), así que el modo
+efectivo del controlador durante una corrida C2 es literalmente lo que
+haya dejado la corrida anterior — variar es el comportamiento correcto
+del diseño, no algo que debiera "corregirse" para que coincida.
+
+**El fix vive en este checkout (`traffic-generator-pucp`), no en el
+servidor del panel** (`192.168.18.154:8780`, que corre su propia copia
+desplegada) — desplegarlo ahí es un paso aparte, pendiente de tu
+confirmación, igual que los despliegues anteriores de esta sesión
+(`THRESHOLD_CONTROL_PATH_FIX.md`, `MOBILE_SYN_TELEMETRY_DEPLOY_DRIFT.md`).
 
 ## 3. Indicadores (emparejados manualmente, sorteando el bug de §2)
 
@@ -154,18 +181,20 @@ el umbral y cuántos valores de f"** porque: (a) el N de 25 es preliminar
 (§4, n=2 pares); (b) el presupuesto de horas («horas» en el brief) no
 tiene un valor — 37h ya es significativo y probablemente exceda lo
 razonable para una sola campaña de tesis sin una decisión explícita del
-presupuesto disponible; (c) el hallazgo de §2 debe resolverse antes de
-que cualquier N calculado automáticamente sea confiable.
+presupuesto disponible. (El hallazgo de §2 ya no bloquea esto — quedó
+corregido en esta misma rama — pero el fix todavía no está desplegado
+en el servidor del panel, ver §2.)
 
 ## 7. Punto de control
 
 **No se inició la campaña.** Antes de hacerlo, en orden de prioridad:
 
-1. Investigar y corregir el hallazgo de §2 (agrupación `policy`
-   inestable en `experimental_analytics.py`/`detection_evaluation.py`).
+1. Desplegar el fix de §2 (`detection_evaluation.py`) al servidor del
+   panel (`192.168.18.154:8780`) — confirmación pendiente.
 2. Confirmar el presupuesto de horas disponible y el valor de EMI/margen
    (§4 usó supuestos razonados, no decisiones tuyas).
-3. Decidir si repetir el piloto (con más pares por composición) antes de
-   fijar N, dado que n=2 es una base muy débil.
+3. Decidir si repetir el piloto (con más pares por composición, ahora
+   que el emparejamiento automático funciona) antes de fijar N, dado que
+   n=2 es una base muy débil.
 4. Investigar la causa de los 8 fallos por reloj/timeout (§1) antes de
    comprometerse a sesiones de campaña de varias horas seguidas.
