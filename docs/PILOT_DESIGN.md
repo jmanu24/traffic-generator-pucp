@@ -69,18 +69,29 @@ deliberada del orden (a diferencia de `im_campaign.build_schedule()`, que
 sí agrupa por modo a propósito; este piloto usa el orden que pide el
 propio brief, aleatorio dentro de cada semilla).
 
-**No se ha tocado el laboratorio real para este piloto.** Antes de
-ejecutar `scripts/run_pilot.py` falta, y requiere tu confirmación aparte
-en el momento de hacerlo:
+**No se ha tocado el laboratorio real para este piloto.**
 
-1. Generar y confirmar los 3 planes benignos (semillas 201-203,
-   `benign_lab/planner.py`, 180 s, mismo perfil que los de calibración) y
-   llenar `PLAN_HASHES` en `scripts/run_pilot.py` con sus hashes.
-2. Confirmar que el panel (`http://192.168.18.154:8780`) está arriba y
+**Paso 1 completado** (puro, local, sin tocar el laboratorio):
+`scripts/generate_pilot_benign_plans.py` generó los 3 planes benignos
+(semillas 201-203, 180 s, mismas capacidades de
+`config/lab.connected.yaml` que usó la calibración) —
+`data/pilot_benign_plans_manifest.json` tiene el registro completo.
+`PLAN_HASHES` en `scripts/run_pilot.py` ya está lleno:
+
+| Semilla | `plan_hash` |
+|---|---|
+| 201 | `5c54495dec246a16d3f5a6ab3e4f46c337ce35f10fdee8f420be28bb6e9e0d80` |
+| 202 | `5fd659158e42df8495033d6033f552a55f8f9dd814b8458547580630ddfb76eb` |
+| 203 | `c974d7454f21a33953a92b2e10d392ed3783905c837cf6c03dfc29639113aceb` |
+
+Antes de ejecutar `scripts/run_pilot.py` contra el laboratorio real falta,
+y requiere tu confirmación aparte en el momento de hacerlo:
+
+1. Confirmar que el panel (`http://192.168.18.154:8780`) está arriba y
    que ningún otro experimento está activo (`Manager.start()` ya rechaza
    corridas concurrentes, pero vale confirmarlo antes de lanzar ~4.5 h de
    corridas desatendidas).
-3. Confirmar el modo efectivo actual del controlador antes de empezar
+2. Confirmar el modo efectivo actual del controlador antes de empezar
    (afecta solo el primer reinicio, no el resultado).
 
 ## 4. Análisis — qué falta y qué supuestos quedan abiertos
