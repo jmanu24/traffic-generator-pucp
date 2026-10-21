@@ -11,6 +11,22 @@ METRICS={'delivery_pct':('%','Entrega de cuota'),'mean_mbps':('Mbps','Payload me
 METHOD=dict(unit='execution',cluster='seed',mean='equal weight to each seed mean',confidence='two-sided Student t, df = independent seeds - 1; conservative df=30 cap',assumptions=['Independent seed means under comparable conditions','Approximate normality of seed means; no automatic normality validation','Events and windows are not independent experimental repeats','pipeline, policy and detection_mode are the only single-factor differences a paired comparison treats as a verified A/B candidate; any other combination of differing grouping fields is reported as descriptive only'],sources=['https://www.itl.nist.gov/div898/handbook/eda/section3/eda352.htm','https://www.itl.nist.gov/div898/handbook/eda/section3/eda3672.htm','https://www.itl.nist.gov/div898/handbook/prc/section3/prc312.htm'])
 
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+# D7-pilot: the controller's own threshold_snapshot['hash'] bundles
+# DETECTION_CROSS_DOMAIN_CORRELATION together with every other threshold
+# value and code hash -- but that flag IS detection_mode (already its own,
+# separate grouping dimension), so reusing the raw hash as the `policy`
+# comparability key made a C3/C4 (I vs M) pair differ in TWO grouping
+# fields at once (policy and detection_mode) instead of the one the
+# report() pairing logic requires, structurally preventing report() from
+# ever verifying the exact comparison the I-vs-M study design needs.
+# Recomputed excluding that one flag so `policy` means "everything else
+# about the detector's configuration is the same" -- confirmed live:
+# recomputing the pilot's 60 runs with this excluded (not just the
+# detection_evaluation.py pre-started_at-cycle fix from the same branch)
+# is what finally produced non-zero group_comparisons across seeds.
+def policy_comparability_id(snapshot):
+ values={k:v for k,v in (snapshot.get('values') or {}).items() if k!='DETECTION_CROSS_DOMAIN_CORRELATION'}
+ return digest(dict(values=values,implementation_hashes=snapshot.get('implementation_hashes',{})))
 def finite(value):return isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value)
 def percentile(values,p):
  values=sorted(x for x in values if finite(x))
@@ -153,10 +169,25 @@ class ExperimentalAnalytics:
    for item in payload:
     d=item['domain'];fp=[x for x in base['evaluation'].get('domains',[]) if d=='all' or x['domain']==d];n=sum(x['eligible_benign_windows'] for x in fp)
     item.update(detection_fpr_pct=100*sum(x['detection_fp'] for x in fp)/n if n else None,decision_fpr_pct=100*sum(x['decision_fp'] for x in fp)/n if n else None,eligible_benign_domain_windows=n,reported_restricted_seconds=sum(x['reported_restricted_seconds'] for x in fp))
-   policy=base['evaluation'].get('threshold_snapshots',[]);policy_ids=sorted(x.get('hash','') for x in policy);recorded_context=base['summary'].get('context');context={k:v for k,v in recorded_context.items() if k not in ('captured_at','run_id')} if recorded_context else dict(provenance='legacy_unknown')
+   policy=base['evaluation'].get('threshold_snapshots',[]);policy_ids=sorted({policy_comparability_id(x) for x in policy});recorded_context=base['summary'].get('context');context={k:v for k,v in recorded_context.items() if k not in ('captured_at','run_id')} if recorded_context else dict(provenance='legacy_unknown')
    first_cycles=base['initial_cycles']
    initial_state='not_recorded' if not first_cycles else ('reported_restricted' if any(any(v>0 for v in x.get('active_blocks',{}).values()) for x in first_cycles) else 'reported_clear')
-   grouping=dict(initial_state=initial_state,profile=base['summary']['profile_hash'],capacity=base['summary']['capacity_mbps'],duration=base['summary']['duration_s'],warmup=base['summary']['warmup_s'],mode=base['summary']['mode'],scenario=base['summary']['scenario'],pipeline=base['summary']['pipeline'],detection_mode=base['summary']['detection_mode'],attack_plan=base['summary']['attack_plan_hash'],purpose=base['summary']['purpose'],benchmark=base['summary']['benchmark_domain'],execution=base['summary']['execution_hash'],topology=base['summary']['topology_signature'],context=context,hardware=base['hardware'],policy=policy_ids,python=base['summary']['python_versions'])
+   # D7-pilot: initial_state is diagnostic (did the controller still report
+   # active_blocks>0 somewhere in this run's own first 5s), NOT a stable
+   # experimental factor -- confirmed live, the one real-pilot case of
+   # 'reported_restricted' showed active_blocks={} for the first ~3s then
+   # a block appearing at t=3.86s, well before this run's own attack
+   # window (ATTACK_START_S=60) could have caused one: a leftover
+   # mitigation from the PREVIOUS run's attack, still draining through its
+   # own release delay (BROADBAND_RELEASE_QUIET_S etc.), not this run's own
+   # state. Putting it in `grouping` made two runs under the identical
+   # requested condition fail to merge into one group purely because of
+   # this asynchronous release-lag timing -- same bug class as the
+   # pre-started_at stale cycle (detection_evaluation.py) and the
+   # detection_mode-bundled policy hash (policy_comparability_id above).
+   # Kept as a top-level, visible field (not dropped) -- just excluded
+   # from the strict equality-based comparability key.
+   grouping=dict(profile=base['summary']['profile_hash'],capacity=base['summary']['capacity_mbps'],duration=base['summary']['duration_s'],warmup=base['summary']['warmup_s'],mode=base['summary']['mode'],scenario=base['summary']['scenario'],pipeline=base['summary']['pipeline'],detection_mode=base['summary']['detection_mode'],attack_plan=base['summary']['attack_plan_hash'],purpose=base['summary']['purpose'],benchmark=base['summary']['benchmark_domain'],execution=base['summary']['execution_hash'],topology=base['summary']['topology_signature'],context=context,hardware=base['hardware'],policy=policy_ids,python=base['summary']['python_versions'])
    metric=next((x for x in payload if x['domain']==domain),payload[0]);series=[];previous=None;changes=[]
    for e in base['plan'].get('events',[]):
     if domain=='all' or e['domain']==domain:changes.extend([(e['start_s'],e['rate_bps']/1e6),(e['start_s']+e['duration_s'],-e['rate_bps']/1e6)])
@@ -169,7 +200,7 @@ class ExperimentalAnalytics:
     total=part.get('bytes_tx',0)+part.get('bytes_rx',0);actual=None
     if previous and elapsed>previous[0]:actual=max(0,total-previous[1])*8/(elapsed-previous[0])/1e6
     if not previous or elapsed>previous[0]:series.append(dict(elapsed_s=elapsed,payload_mbps=actual,planned_mbps=max(0,planned),cumulative_bytes=total));previous=(elapsed,total)
-   return dict(run=base['summary'],metrics=payload,selected_metric=metric,resources=base['resources'],evaluation=base['evaluation'],grouping=grouping,group_id=digest(grouping)[:16],series=series,hardware=base['hardware'])
+   return dict(run=base['summary'],metrics=payload,selected_metric=metric,resources=base['resources'],evaluation=base['evaluation'],grouping=grouping,group_id=digest(grouping)[:16],series=series,hardware=base['hardware'],initial_state=initial_state)
  def report(self,ids,domain='all',metric='delivery_pct',precision=1):
   if not isinstance(domain,str) or not isinstance(metric,str) or domain not in ('all',)+DOMAINS or metric not in METRICS:raise ValueError('Unknown domain or metric')
   if not isinstance(ids,list) or any(not isinstance(rid,str) for rid in ids) or not 1<=len(ids)<=100 or len(set(ids))!=len(ids):raise ValueError('Select between 1 and 100 distinct executions')

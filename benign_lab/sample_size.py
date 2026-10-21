@@ -46,6 +46,79 @@ def required_seeds_relative(sd, mean, relative_precision, **kwargs):
     return required_seeds(sd, abs(mean) * relative_precision, **kwargs)
 
 
+# Standard normal quantile for power=0.80 (one-sided upper tail of a power
+# curve), z such that Phi(z)=0.80. No scipy in this environment -- hardcoded
+# the same way Z975 already is, not computed.
+Z_POWER_80 = 0.8416212335729143
+# z_{0.95}: the ONE-sided 95% critical value, for the non-inferiority margin
+# test below (alpha is not split across two tails there).
+Z95_ONE_SIDED = 1.6448536269514722
+
+
+def _phi(z):
+    """Standard normal CDF, via math.erf (no scipy available here)."""
+    return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+
+
+def _required_seeds_power_normal_approx(sd, effect, z_alpha, power, minimum, maximum):
+    """Smallest n with normal-approximate power >= `power` for a one-sample
+    (paired-difference) t-test with critical value z_alpha and a true mean
+    difference of `effect`.
+
+    DOCUMENTED APPROXIMATION (brief explicitly allows "aproximacion
+    documentada" in place of an exact noncentral-t calculation, which
+    would need scipy -- not installed in this environment): power is
+    computed as Phi(effect*sqrt(n)/sd - z_alpha), the standard normal
+    approximation to the noncentral t distribution's power. This slightly
+    OVERSTATES power (equivalently, slightly UNDERSTATES the required n)
+    versus the exact noncentral-t calculation, because it ignores the
+    extra spread from estimating sd with few degrees of freedom -- the gap
+    shrinks as n grows and is typically small already by n=8-10. Flagged
+    here and in every caller's docstring; not silently passed off as exact.
+    """
+    if sd is None or effect is None or sd <= 0 or effect <= 0:
+        return None
+    z_power = _inverse_phi_power(power)
+    n = max(minimum, math.ceil(((z_alpha + z_power) * sd / effect) ** 2))
+    while n <= maximum:
+        if _phi(effect * math.sqrt(n) / sd - z_alpha) >= power:
+            return n
+        n += 1
+    raise ValueError(f'Power {power} for effect {effect} (sd={sd}) needs more than {maximum} seeds')
+
+
+def _inverse_phi_power(power):
+    if abs(power - 0.80) < 1e-9:
+        return Z_POWER_80
+    raise ValueError('Only power=0.80 is supported (no scipy available to invert Phi for another value)')
+
+
+def required_seeds_power(sd, effect, power=0.80, alpha=0.05, minimum=2, maximum=1000):
+    """D7-pilot: seeds needed for a two-sided paired t-test (alpha=0.05)
+    to detect a true mean paired difference of `effect` (same unit as sd,
+    e.g. percentage points of availability_pct) with the given power.
+    Normal approximation -- see _required_seeds_power_normal_approx's
+    docstring. Only alpha=0.05 (Z975) and power=0.80 are supported, the
+    exact values the pilot brief asks for."""
+    if alpha != 0.05:
+        raise ValueError('Only alpha=0.05 is supported (Z975 is hardcoded, same as required_seeds())')
+    return _required_seeds_power_normal_approx(sd, effect, Z975, power, minimum, maximum)
+
+
+def required_seeds_noninferiority(sd, margin, power=0.80, alpha=0.05, minimum=2, maximum=1000):
+    """Seeds needed for a ONE-sided non-inferiority paired test (HE2: M is
+    not worse than I by more than `margin`) to reach `power` when the true
+    paired difference is exactly `margin` (the standard power-analysis
+    convention for a non-inferiority margin: power to detect the boundary
+    case, not an arbitrarily larger true effect). One-sided alpha (Z95_ONE_SIDED)
+    instead of the two-sided Z975 used by required_seeds_power() -- the
+    hypothesis only cares about crossing the margin in one direction.
+    Same normal-approximation caveat as required_seeds_power()."""
+    if alpha != 0.05:
+        raise ValueError('Only alpha=0.05 is supported (Z95_ONE_SIDED is hardcoded)')
+    return _required_seeds_power_normal_approx(sd, margin, Z95_ONE_SIDED, power, minimum, maximum)
+
+
 def plan_sample_size(calibration, precision_by_metric, method='95% CI, Student t, independent seeds'):
     """calibration: {metric: {'mean':.., 'sd':..}} from Fase 1 capacity
     calibration (per domain/metric: throughput_mbps, delay_ms, jitter_ms,

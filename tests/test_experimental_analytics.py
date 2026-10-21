@@ -9,13 +9,29 @@ from benign_lab.config import ROOT
 def manager(tmp_path):
  root=tmp_path/'runs';root.mkdir();m=SimpleNamespace(runs={},events={},folder=lambda rid:root/rid);return m
 
-def record(m,rid,seed=1,delivery=.9,pipeline='baseline',status='completed',capacity=100,detection_mode=None,hardware=False,attack_plan_hash=None):
+def record(m,rid,seed=1,delivery=.9,pipeline='baseline',status='completed',capacity=100,detection_mode=None,hardware=False,attack_plan_hash=None,cycle_correlation_flag=None,active_blocks_at_start=None):
  p=generate(load_profiles(ROOT/'profiles'),seed,5,{d:capacity for d in ('mobile','fixed','enterprise','peering')});folder=m.folder(rid);folder.mkdir()
  r=dict(id=rid,status=status,mode='lab',purpose='baseline_plan',scenario='B0',pipeline=pipeline,detection_mode=detection_mode,attack_plan_hash=attack_plan_hash,seed=seed,plan_hash=p['plan_hash'],execution_hash='exec',execution_profile='coordinated',duration_s=5,elapsed_s=5,created_at=100,started_at=100,finished_at=105,agents={},observed_attacks=[],attack_windows=[],experiment_context={'schema':1,'captured_at':seed,'transport':{'transport':'wired'}})
  es={e['event_id']:dict(e,status='completed',bytes_tx=int(e['planned_bytes']*delivery),bytes_rx=0,lateness_s=.01) for e in p['events']}
  (folder/'run.json').write_text(json.dumps(r));(folder/'benign_plan.json').write_text(json.dumps(p));(folder/'event_states.json').write_text(json.dumps(es));(folder/'lab_snapshot.json').write_text(json.dumps({'nodes':{},'targets':{}}))
  if hardware:
   (folder/'vm_resources.jsonl').write_text(json.dumps(dict(host='h1',platform='linux_guest',timestamp=102,interval_s=5,cpu_pct=1,logical_cpus=2,memory_total_bytes=2*1024**3,memory_pct=1))+'\n')
+ cycles=[]
+ if cycle_correlation_flag is not None:
+  # Mirrors the real controller: the SAME SYN_THRESHOLD/etc but a different
+  # DETECTION_CROSS_DOMAIN_CORRELATION produces a DIFFERENT thresholds.hash
+  # (confirmed live, docs/PILOT_RESULT.md section 2) -- not computed by a
+  # real digest here, just a distinct literal per flag value, which is all
+  # policy_comparability_id's exclusion behavior needs to be exercised.
+  values=dict(SYN_THRESHOLD=76.82,DECISION_THRESHOLD=1.5,DETECTION_CROSS_DOMAIN_CORRELATION=cycle_correlation_flag)
+  cycles.append(dict(kind='cycle',timestamp=102,thresholds=dict(values=values,implementation_hashes={'detection/engine.py':'samehash'},hash='hash_for_'+str(cycle_correlation_flag))))
+ if active_blocks_at_start is not None:
+  # Mirrors the real pilot case: active_blocks appearing a couple seconds
+  # into the run's own first-5s window -- leftover mitigation release lag
+  # from the PREVIOUS run, not this run's own state.
+  cycles.append(dict(kind='cycle',timestamp=103,active_blocks=active_blocks_at_start))
+ if cycles:
+  (folder/'detection_events.jsonl').write_text('\n'.join(json.dumps(c) for c in cycles)+'\n')
  m.runs[rid]=r;m.events[rid]=es;return folder
 
 def test_seed_balancing_and_no_pseudoreplication():
@@ -90,6 +106,62 @@ def test_same_attack_plan_pairs_c3_and_c4_correctly(tmp_path):
  assert comparison['factor']=='detection_mode'
  assert all(match['attack_plan_hash']=='attackA' for match in comparison['matches'])
  assert comparison['statistics']['seed_balanced']['mean']==pytest.approx(30,abs=.1)
+
+def test_policy_comparability_ignores_detection_mode_flag_in_threshold_hash(tmp_path):
+ """D7-pilot regression (docs/PILOT_RESULT.md section 2): the controller's
+ raw threshold_snapshot hash bundles DETECTION_CROSS_DOMAIN_CORRELATION
+ with every other threshold value, so an I-vs-M pair that is otherwise
+ IDENTICAL would differ in both 'policy' and 'detection_mode' at once --
+ two differing grouping fields, which report()'s single-factor pairing
+ requires to be exactly one. Confirmed live against the real pilot:
+ group_comparisons was 0/60 until policy_comparability_id started
+ excluding that one flag."""
+ m=manager(tmp_path)
+ for seed in [1,2]:
+  record(m,'c3-'+str(seed),seed,delivery=.6,pipeline='enabled',detection_mode='isolated',hardware=True,attack_plan_hash='attackA',cycle_correlation_flag=False)
+  record(m,'c4-'+str(seed),seed,delivery=.9,pipeline='enabled',detection_mode='multidomain',hardware=True,attack_plan_hash='attackA',cycle_correlation_flag=True)
+ r=ExperimentalAnalytics(tmp_path,m).report(list(m.runs))
+ assert len(r['group_comparisons'])==1
+ comparison=r['group_comparisons'][0]
+ assert comparison['factor']=='detection_mode'
+ assert comparison['statistics']['n_seeds']==2
+ assert comparison['statistics']['seed_balanced']['mean']==pytest.approx(30,abs=.1)
+
+def test_policy_comparability_still_separates_a_genuinely_different_threshold_config(tmp_path):
+ """The exclusion is narrow: a DIFFERENT SYN_THRESHOLD (a real
+ recalibration, not just the mode flag) must still make two runs
+ non-comparable -- this isn't a blanket 'ignore policy' escape hatch."""
+ m=manager(tmp_path)
+ record(m,'before',1,delivery=.6,pipeline='enabled',detection_mode='isolated',hardware=True,cycle_correlation_flag=False)
+ after_folder=record(m,'after',1,delivery=.9,pipeline='enabled',detection_mode='isolated',hardware=True,cycle_correlation_flag=False)
+ cycle=json.loads((after_folder/'detection_events.jsonl').read_text())
+ cycle['thresholds']['values']['SYN_THRESHOLD']=999.0
+ cycle['thresholds']['hash']='different_real_policy_hash'
+ (after_folder/'detection_events.jsonl').write_text(json.dumps(cycle)+'\n')
+ a=ExperimentalAnalytics(tmp_path,m);r=a.report(list(m.runs))
+ assert len(r['groups'])==2
+ pair=r['pairs'][0]
+ assert pair['differing_conditions']==['policy']
+ assert pair['context_verified'] is True  # still a verified single-factor ('policy') pair, just not merged into one group
+
+def test_initial_state_is_reported_but_never_blocks_grouping(tmp_path):
+ """Third D7-pilot regression (docs/PILOT_RESULT.md section 2): a run
+ whose first 5s still shows leftover active_blocks (mitigation release
+ lag from the PREVIOUS run, confirmed live) must not get a different
+ group_id than an otherwise identical run that happened to start clean --
+ same bug class as the pre-started_at cycle and the policy/detection_mode
+ bundling. initial_state stays visible (not dropped), just outside the
+ strict comparability key."""
+ m=manager(tmp_path)
+ clean=record(m,'clean',1,delivery=.9,pipeline='enabled',detection_mode='isolated',hardware=True)
+ restricted=record(m,'restricted',2,delivery=.9,pipeline='enabled',detection_mode='isolated',hardware=True,active_blocks_at_start={'mobile':5,'broadband':3})
+ a=ExperimentalAnalytics(tmp_path,m)
+ da=a.detail('clean');db=a.detail('restricted')
+ assert da['initial_state']=='not_recorded'  # no first_cycles written for this one
+ assert db['initial_state']=='reported_restricted'
+ assert 'initial_state' not in da['grouping'] and 'initial_state' not in db['grouping']
+ assert da['group_id']==db['group_id']
+ r=a.report(list(m.runs));assert len(r['groups'])==1;assert r['groups'][0]['statistics']['n_seeds']==2
 
 def test_no_fp_evidence_is_missing_not_zero(tmp_path):
  m=manager(tmp_path);record(m,'old');d=ExperimentalAnalytics(tmp_path,m).detail('old');assert all(x['detection_fpr_pct'] is None for x in d['metrics']);assert d['evaluation']['available'] is False

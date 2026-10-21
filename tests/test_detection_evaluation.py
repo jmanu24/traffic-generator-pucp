@@ -28,6 +28,23 @@ def test_warmup_and_unobserved_truth_excluded():
  p,r,a,i,e=dataset();p['warmup_s']=5;x=evaluate(p,r,a,i,e);assert x['domains'][0]['eligible_benign_windows']==1;assert x['domains'][0]['detection_fp']==0
  r['elapsed_s']=4;r['status']='failed';x=evaluate(p,r,a,i,e);assert x['domains'][0]['eligible_benign_windows']==0
 
+def test_pre_start_stale_cycle_never_counts_as_a_policy_change():
+ """D7-pilot regression (docs/PILOT_RESULT.md section 2): detection_events.jsonl
+ is captured from created_at onward, so it legitimately contains cycles from
+ BEFORE started_at (e.g. the previous run's leftover mode, still visible
+ seconds before a detection_mode restart finishes). Those must never count
+ toward this run's own threshold_snapshots/policy_changed_within_capture --
+ confirmed live: this exact pattern (a stale pre-start cycle with a
+ different `thresholds.hash`) made experimental_analytics.py's M-I pairing
+ fail for almost every cross-seed pair in the pilot."""
+ p,r,a,i,e=dataset()
+ for rec in a:
+  if rec['kind']=='cycle':rec['thresholds']['hash']='post_restart_hash'
+ stale=dict(a[0],timestamp=r['started_at']-45.8,thresholds={'values':{'SYN_THRESHOLD':10,'DECISION_THRESHOLD':1.5},'hash':'stale_pre_restart_hash'})
+ x=evaluate(p,r,[stale]+a,i,e)
+ assert x['policy_changed_within_capture'] is False
+ assert [s['hash'] for s in x['threshold_snapshots']]==['post_restart_hash']
+
 def test_ip_change_is_temporal_evidence():
  p,r,a,i,e=dataset();a.append({'event_id':'issued','timestamp':102,'kind':'mitigation_issued','action':{'domain':'broadband','src_ip':'10.20.0.36'}});i=[{'timestamp':104,'namespace':'fixed1','interface':'macvlan1','ipv4_known':True,'ipv4_addresses':[]}]
  x=evaluate(p,r,a,i,e);assert x['ip_changes'][0]['nearby_mitigation_ids']==['issued'];assert x['ip_changes'][0]['association']=='temporal_only'

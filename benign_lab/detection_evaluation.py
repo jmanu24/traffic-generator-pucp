@@ -47,6 +47,20 @@ def evaluate(plan,run,records,interfaces=None,event_states=None,decision_thresho
         for rec in records:
             elapsed=rec.get('timestamp',0)-start
             if 0<=elapsed<plan['duration_s']:buckets[int(elapsed//5)].append(rec)
+    # D7-pilot: `records` (detection_events.jsonl) is captured from created_at
+    # onward, not started_at -- it legitimately includes the ryu-manager
+    # restart/preparation window BEFORE this run's own measurement starts
+    # (e.g. a detection_mode switch finishing seconds before traffic begins).
+    # A stale pre-restart threshold/policy snapshot from that window must
+    # never be reported as if it were part of THIS run's own policy, or two
+    # runs under the identical requested configuration get spuriously
+    # different `threshold_snapshots` (confirmed live: a cycle 45.8s before
+    # started_at, still showing the PREVIOUS run's detection_mode, made
+    # policy_changed_within_capture true and broke experimental_analytics.py's
+    # M-I grouping for almost every cross-seed pair in the D7 pilot -- see
+    # docs/PILOT_RESULT.md section 2). in_window restricts to the same
+    # [start, start+duration_s) window `buckets` already uses.
+    in_window=[rec for bucket in buckets.values() for rec in bucket]
     result=[];unattributed=set();impacted=set()
     for w in truth:
         records_here=buckets[w['window']]
@@ -80,7 +94,7 @@ def evaluate(plan,run,records,interfaces=None,event_states=None,decision_thresho
     for d in domains:
         es=[x for x in (event_states or []) if x['domain']==d];planned=sum(x['planned_bytes'] for x in es);actual=sum(x.get('bytes_tx',0)+x.get('bytes_rx',0) for x in es)
         impact.append(dict(domain=d,planned_bytes=planned,actual_bytes=actual,payload_pct=100*actual/planned if planned else None,failed=sum(x.get('status')=='failed' for x in es),address_errors=sum('assign requested address' in (x.get('error') or '') for x in es)))
-    policies={x['thresholds']['hash']:x['thresholds'] for x in records if x.get('thresholds',{}).get('hash')}
+    policies={x['thresholds']['hash']:x['thresholds'] for x in in_window if x.get('thresholds',{}).get('hash')}
     weights=next((x.get('weights') for x in reversed(records) if x.get('kind')=='decision'),None)
     return dict(confusion_matrix=window_confusion(plan,run,records,result),threshold_snapshots=list(policies.values()),decision_weights=weights,policy_changed_within_capture=len(policies)>1,schema=1,unit='domain x 5-second benign evaluation window',attribution='experiment source IPs and targets; unmatched detections excluded',available=any(x['covered'] for x in result),pipeline=run.get('pipeline'),final=run.get('finished_at') is not None,domains=summaries,windows=result,ip_changes=changes,impacted_sources=[dict(domain=d,ip=ip,sources=sorted(source_names.get(ip,set()))) for d,ip in sorted(impacted)],unattributed_detection_records=len(unattributed),impact=impact,limitations=['Coverage requires fresh experiment-related telemetry in a pipeline-active cycle. Missing evidence is UNKNOWN, never TN.','Issued mitigation means backend dispatch returned true, not independent dataplane confirmation.','Restricted seconds use 5-second controller-state samples; they are not exact enforcement duration.','IP-change associations are temporal and do not prove causality.'],replay=dict(threshold=decision_threshold,scope='Static decision gate over recorded candidates; no counterfactual detector or network simulation') if decision_threshold is not None else None)
 
