@@ -125,9 +125,37 @@ como corresponde.
 Pendiente de desplegar (otro reinicio del mismo servicio) y reconfirmar
 sobre las 60 corridas reales — ver §2.1.
 
-### 2.1 Confirmación tras el segundo despliegue
+### 2.1 Confirmación tras el segundo despliegue — y un tercer hallazgo
 
-_(completado tras comitear el fix — ver el resultado real abajo)_
+El segundo reinicio confirmó el fix en vivo (el par de ejemplo del §2
+coincide), pero al reconfirmar sobre las 60 corridas reales,
+`group_comparisons` pasó de 0 a **7** — mejor, pero ninguno se fusionaba
+entre semillas (`n_seeds=1` en los 7). Grupos bajaron de 33 a 30 (mejora
+parcial, no total).
+
+**Tercera causa, misma familia que las dos anteriores**: `initial_state`
+(`grouping`) — si el controlador reportaba `active_blocks>0` en algún
+ciclo dentro de los primeros 5s de la corrida — también se usaba como
+clave de comparabilidad estricta. Confirmado con datos crudos: la corrida
+`20261020T171441-df22dc79` (semilla 202) mostraba `active_blocks={}` en
+sus primeros ~3s, y recién a `t=3.86s` aparecía `{'mobile':5,
+'broadband':3}` — mucho antes de que el ataque de ESA corrida pudiera
+haber empezado (`ATTACK_START_S=60`). Es decir: una mitigación residual
+de la corrida ANTERIOR, todavía liberándose (umbrales como
+`BROADBAND_RELEASE_QUIET_S=10.0`), no un estado propio de esta corrida.
+`initial_state` nunca se usaba como criterio de exclusión (`eligible`)
+en ningún otro lugar del código — solo entraba, sin ninguna tolerancia,
+al `group_id`.
+
+**Corregido** (`benign_lab/experimental_analytics.py`): `initial_state`
+sigue calculándose y **sigue siendo visible** (ahora como campo de nivel
+superior en la respuesta de `detail()`, no se perdió la información) —
+solo se sacó del diccionario `grouping` que determina `group_id`. Prueba
+de regresión en `tests/test_experimental_analytics.py` (confirmada: falla
+sin el fix).
+
+Pendiente de desplegar (tercer reinicio del mismo servicio) y
+reconfirmar sobre las 60 corridas reales.
 
 ## 3. Indicadores (emparejados manualmente, sorteando el bug de §2)
 

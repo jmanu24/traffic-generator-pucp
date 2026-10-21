@@ -172,7 +172,22 @@ class ExperimentalAnalytics:
    policy=base['evaluation'].get('threshold_snapshots',[]);policy_ids=sorted({policy_comparability_id(x) for x in policy});recorded_context=base['summary'].get('context');context={k:v for k,v in recorded_context.items() if k not in ('captured_at','run_id')} if recorded_context else dict(provenance='legacy_unknown')
    first_cycles=base['initial_cycles']
    initial_state='not_recorded' if not first_cycles else ('reported_restricted' if any(any(v>0 for v in x.get('active_blocks',{}).values()) for x in first_cycles) else 'reported_clear')
-   grouping=dict(initial_state=initial_state,profile=base['summary']['profile_hash'],capacity=base['summary']['capacity_mbps'],duration=base['summary']['duration_s'],warmup=base['summary']['warmup_s'],mode=base['summary']['mode'],scenario=base['summary']['scenario'],pipeline=base['summary']['pipeline'],detection_mode=base['summary']['detection_mode'],attack_plan=base['summary']['attack_plan_hash'],purpose=base['summary']['purpose'],benchmark=base['summary']['benchmark_domain'],execution=base['summary']['execution_hash'],topology=base['summary']['topology_signature'],context=context,hardware=base['hardware'],policy=policy_ids,python=base['summary']['python_versions'])
+   # D7-pilot: initial_state is diagnostic (did the controller still report
+   # active_blocks>0 somewhere in this run's own first 5s), NOT a stable
+   # experimental factor -- confirmed live, the one real-pilot case of
+   # 'reported_restricted' showed active_blocks={} for the first ~3s then
+   # a block appearing at t=3.86s, well before this run's own attack
+   # window (ATTACK_START_S=60) could have caused one: a leftover
+   # mitigation from the PREVIOUS run's attack, still draining through its
+   # own release delay (BROADBAND_RELEASE_QUIET_S etc.), not this run's own
+   # state. Putting it in `grouping` made two runs under the identical
+   # requested condition fail to merge into one group purely because of
+   # this asynchronous release-lag timing -- same bug class as the
+   # pre-started_at stale cycle (detection_evaluation.py) and the
+   # detection_mode-bundled policy hash (policy_comparability_id above).
+   # Kept as a top-level, visible field (not dropped) -- just excluded
+   # from the strict equality-based comparability key.
+   grouping=dict(profile=base['summary']['profile_hash'],capacity=base['summary']['capacity_mbps'],duration=base['summary']['duration_s'],warmup=base['summary']['warmup_s'],mode=base['summary']['mode'],scenario=base['summary']['scenario'],pipeline=base['summary']['pipeline'],detection_mode=base['summary']['detection_mode'],attack_plan=base['summary']['attack_plan_hash'],purpose=base['summary']['purpose'],benchmark=base['summary']['benchmark_domain'],execution=base['summary']['execution_hash'],topology=base['summary']['topology_signature'],context=context,hardware=base['hardware'],policy=policy_ids,python=base['summary']['python_versions'])
    metric=next((x for x in payload if x['domain']==domain),payload[0]);series=[];previous=None;changes=[]
    for e in base['plan'].get('events',[]):
     if domain=='all' or e['domain']==domain:changes.extend([(e['start_s'],e['rate_bps']/1e6),(e['start_s']+e['duration_s'],-e['rate_bps']/1e6)])
@@ -185,7 +200,7 @@ class ExperimentalAnalytics:
     total=part.get('bytes_tx',0)+part.get('bytes_rx',0);actual=None
     if previous and elapsed>previous[0]:actual=max(0,total-previous[1])*8/(elapsed-previous[0])/1e6
     if not previous or elapsed>previous[0]:series.append(dict(elapsed_s=elapsed,payload_mbps=actual,planned_mbps=max(0,planned),cumulative_bytes=total));previous=(elapsed,total)
-   return dict(run=base['summary'],metrics=payload,selected_metric=metric,resources=base['resources'],evaluation=base['evaluation'],grouping=grouping,group_id=digest(grouping)[:16],series=series,hardware=base['hardware'])
+   return dict(run=base['summary'],metrics=payload,selected_metric=metric,resources=base['resources'],evaluation=base['evaluation'],grouping=grouping,group_id=digest(grouping)[:16],series=series,hardware=base['hardware'],initial_state=initial_state)
  def report(self,ids,domain='all',metric='delivery_pct',precision=1):
   if not isinstance(domain,str) or not isinstance(metric,str) or domain not in ('all',)+DOMAINS or metric not in METRICS:raise ValueError('Unknown domain or metric')
   if not isinstance(ids,list) or any(not isinstance(rid,str) for rid in ids) or not 1<=len(ids)<=100 or len(set(ids))!=len(ids):raise ValueError('Select between 1 and 100 distinct executions')
