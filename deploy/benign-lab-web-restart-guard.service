@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart benign-lab-web when idle to bound its memory growth (docs/PILOT_RESULT.md section 1)
+After=benign-lab-web.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/ubuntu/traffic-generator-pucp/.venv/bin/python /home/ubuntu/traffic-generator-pucp/scripts/restart_dashboard_if_idle.py

@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically check whether benign-lab-web should be restarted (idle only, docs/PILOT_RESULT.md section 1)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
