@@ -154,8 +154,34 @@ solo se sacó del diccionario `grouping` que determina `group_id`. Prueba
 de regresión en `tests/test_experimental_analytics.py` (confirmada: falla
 sin el fix).
 
-Pendiente de desplegar (tercer reinicio del mismo servicio) y
-reconfirmar sobre las 60 corridas reales.
+**Desplegado y reconfirmado** (tercer reinicio del mismo servicio, sin
+experimentos activos): `/api/analytics/report` sobre las 60 corridas
+reales ahora da **24 grupos** (desde 38 iniciales) y **7
+`group_comparisons`**, de los cuales **6/7 ya fusionan las 2 semillas
+elegibles** (`n_seeds=2`):
+
+| Composición | `n_seeds` | M−I medio (`delivery_pct`) |
+|---|---|---|
+| composition1_mobile | 2 | +24.27pp |
+| composition1_enterprise | 2 | +17.20pp |
+| composition3_multidomain_under_threshold (confirmatoria) | 2 | +17.17pp |
+| C1 (benigno, M−I) | 2 | +11.50pp |
+| composition2_multidomain_over_threshold | 2 | +8.59pp |
+| composition1_peering | 2 | +21.66pp |
+| composition1_fixed | 1 | +23.79pp |
+
+`composition1_fixed` se queda en `n_seeds=1` **no por un bug** — de las 3
+semillas, solo 1 par (201) tenía ambas corridas (C3 y C4) elegibles; 202
+y 203 perdieron su C4/C3 respectivamente por los fallos de reloj del
+§1. **Estos 7 valores coinciden exactamente, hasta el redondeo, con los
+calculados a mano en el §3** (antes de este arreglo) — confirma tanto
+que el fix es correcto como que el emparejamiento manual que se usó de
+respaldo había llegado al resultado correcto por otro camino.
+
+Con esto, el §3 (indicadores) y el §4 (N requerido) de este informe ya
+no dependen de un emparejamiento manual — `/api/analytics/report` los
+reproduce automáticamente a partir de aquí en adelante, para esta
+campaña y para cualquier futura.
 
 ## 3. Indicadores (emparejados manualmente, sorteando el bug de §2)
 
@@ -246,20 +272,24 @@ el umbral y cuántos valores de f"** porque: (a) el N de 25 es preliminar
 (§4, n=2 pares); (b) el presupuesto de horas («horas» en el brief) no
 tiene un valor — 37h ya es significativo y probablemente exceda lo
 razonable para una sola campaña de tesis sin una decisión explícita del
-presupuesto disponible. (El hallazgo de §2 ya no bloquea esto — quedó
-corregido en esta misma rama — pero el fix todavía no está desplegado
-en el servidor del panel, ver §2.)
+presupuesto disponible. (El hallazgo de §2 ya **no** bloquea esto — los
+3 fixes quedaron corregidos, probados y desplegados al servidor real en
+esta misma rama, confirmados en vivo contra las 60 corridas del piloto.)
 
 ## 7. Punto de control
 
 **No se inició la campaña.** Antes de hacerlo, en orden de prioridad:
 
-1. Desplegar el fix de §2 (`detection_evaluation.py`) al servidor del
-   panel (`192.168.18.154:8780`) — confirmación pendiente.
-2. Confirmar el presupuesto de horas disponible y el valor de EMI/margen
+1. Confirmar el presupuesto de horas disponible y el valor de EMI/margen
    (§4 usó supuestos razonados, no decisiones tuyas).
-3. Decidir si repetir el piloto (con más pares por composición, ahora
-   que el emparejamiento automático funciona) antes de fijar N, dado que
-   n=2 es una base muy débil.
-4. Investigar la causa de los 8 fallos por reloj/timeout (§1) antes de
+2. Decidir si repetir el piloto (con más pares por composición, ahora
+   que el emparejamiento automático funciona de verdad) antes de fijar
+   N, dado que n=2 sigue siendo una base muy débil para la composición
+   confirmatoria.
+3. Investigar la causa de los 8 fallos por reloj/timeout (§1) antes de
    comprometerse a sesiones de campaña de varias horas seguidas.
+
+El hallazgo de §2 (agrupación M-I automática) queda **cerrado**: 3
+causas encontradas, corregidas, probadas (6 pruebas de regresión nuevas,
+cada una confirmada fallando sin su fix) y desplegadas y reconfirmadas
+en vivo contra el propio piloto.
