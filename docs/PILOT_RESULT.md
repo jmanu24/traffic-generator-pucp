@@ -46,14 +46,40 @@ proceso `asyncio` con memoria creciente es un candidato directo para
 pausas de latencia/GC progresivas — coincide con que los fallos de
 "comunicación lenta"/"deadline excedido" se concentraran en la última
 hora de una sesión continua de 4,5h, y con que ninguno ocurriera en la
-primera hora (seed 201). **No se investigó la fuga de memoria en sí**
-(qué estructura crece sin límite) — queda como un hallazgo aparte para
-quien mantenga `benign_lab/api.py`, no bloqueante para la campaña.
+primera hora (seed 201).
 
-**Recomendación para la campaña, actualizada**: reiniciar
-`benign-lab-web.service` periódicamente durante sesiones largas (p. ej.
-cada 2-3 horas, o entre bloques de semilla) en vez de — o además de —
-cualquier ajuste de NTP, que ya está funcionando correctamente.
+**Causa raíz confirmada (2026-10-20, post-piloto)**: `Manager.__init__`
+(`benign_lab/runner.py`) carga en `self.events` el `event_states.json`
+**completo** de cada carpeta de corrida que exista en disco al arrancar
+— y cada nueva corrida se agrega ahí también — sin desalojar nunca
+ninguna, ni siquiera corridas terminadas hace días. Confirmado con datos
+reales: 165 carpetas de corrida ya acumuladas en
+`.runtime/benign-lab/data/runs/`, ~2,5MB de JSON por corrida (~393MB
+crudo en total) — consistente con los 3,3GB en memoria Python (el
+overhead de objetos sobre JSON anidado suele ser 5-10×). Una campaña de
+37h agregaría ~500 corridas más (otros ~1,25GB crudo), sin ningún límite
+de retención.
+
+**No se corrigió el código** — `self.events[rid]` se lee directamente
+(sin alternativa a disco) en ~10 lugares de `runner.py`/`api.py`
+(incluida `/api/runs/{rid}/events`, sin `.get()` defensivo); desalojar
+corridas terminadas de memoria con seguridad tocaría todos esos puntos y
+merece su propia revisión, no un parche apurado antes de 37h reales de
+laboratorio. **Mitigación elegida en su lugar** (decisión tuya,
+operativa, sin tocar código de detección/decisión/orquestación):
+`scripts/restart_dashboard_if_idle.py` + `deploy/benign-lab-web-restart
+-guard.{service,timer}` — un timer systemd que, cada 15 min, reinicia
+`benign-lab-web.service` **solo si** no hay ningún experimento activo
+(verificado en vivo contra `/api/runs`, nunca a ciegas) y pasaron más de
+2h desde el último arranque del servicio (`ActiveEnterTimestampMonotonic`
+de `systemctl show`, no un archivo de estado aparte). Instalado y
+habilitado (`systemctl enable --now`, sobrevive reinicios del host),
+probado en vivo (una ejecución manual confirmó la decisión correcta de
+"saltar"). 4 pruebas unitarias en
+`tests/test_restart_dashboard_if_idle.py` cubren las 3 decisiones
+(activo → salta; muy reciente → salta; inactivo y viejo → reinicia) y el
+caso de fallo defensivo (si no se puede confirmar que está inactivo,
+nunca reinicia a ciegas).
 
 Las 8 corridas fallidas **no se borraron** — siguen en el historial del
 panel (`eligible=False`, con `exclusion_reasons`) y en
