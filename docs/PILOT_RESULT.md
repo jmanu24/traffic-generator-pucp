@@ -17,12 +17,43 @@ Ejecutado 2026-10-20, `scripts/run_pilot.py` contra el laboratorio real
 
 **Las 8 fallas se concentraron en semillas 202/203** (0 en 201, que corrió
 primera y completa sin problemas): 1 en seed 202, 7 en seed 203 — la
-última hora del piloto. Consistente con degradación progresiva (deriva
-de reloj acumulada, o carga de las VMs) a lo largo de una sesión larga y
-continua, no con un problema puntual de un nodo. **Recomendación para la
-campaña**: no correr más de ~2-3 horas seguidas sin una resincronización
-NTP explícita entre bloques, o investigar la causa de fondo antes de
-comprometerse a sesiones largas sin supervisión.
+última hora del piloto.
+
+**Causa investigada (2026-10-20, post-piloto)**: **no es un problema real
+de sincronización NTP.** Se verificó, por lectura directa contra `ue1`
+(`10.10.0.8`) y `ent-site-4`/`ent-site-5` (los nodos nombrados en los
+errores) y contra este mismo nodo de control, que **los tres están
+sincronizados de forma independiente** contra el mismo servidor NTP
+externo (`185.125.190.58`) con offsets de microsegundos
+(`timedatectl timesync-status`: -362µs en ue1, -163µs en el control) —
+muy por debajo del límite de 0,25s (`max_clock_skew_s`,
+`config/lab.connected.yaml`) que disparó los fallos durante el piloto.
+Una medición cruda de ida y vuelta por SSH sí mostró ~0,4s de
+discrepuencia aparente con `ue1` en el momento de la investigación, pero
+es consistente con asimetría de latencia de red (RTT de la medición
+~0,83s, mucho más alto que el RTT típico), no con una deriva de reloj
+real — exactamente el modo de falla que el propio mensaje de error ya
+reconocía ("clock check inconclusive due to communication latency").
+
+**Hallazgo correlacionado, más probable como causa de fondo**: el
+servicio del panel (`benign-lab-web.service`, el mismo proceso Python
+que atendió las 60 corridas sin reiniciarse en ningún momento del
+piloto) acumula memoria de forma sostenida — 3,3 GB residentes tras
+~22h de actividad continua (confirmado al reiniciarlo para desplegar
+los fixes del §2: cayó a 74,5 MB, y ya volvió a subir a 1,57 GB tras
+solo ~90 min de actividad liviana, sin ningún piloto corriendo). Un
+proceso `asyncio` con memoria creciente es un candidato directo para
+pausas de latencia/GC progresivas — coincide con que los fallos de
+"comunicación lenta"/"deadline excedido" se concentraran en la última
+hora de una sesión continua de 4,5h, y con que ninguno ocurriera en la
+primera hora (seed 201). **No se investigó la fuga de memoria en sí**
+(qué estructura crece sin límite) — queda como un hallazgo aparte para
+quien mantenga `benign_lab/api.py`, no bloqueante para la campaña.
+
+**Recomendación para la campaña, actualizada**: reiniciar
+`benign-lab-web.service` periódicamente durante sesiones largas (p. ej.
+cada 2-3 horas, o entre bloques de semilla) en vez de — o además de —
+cualquier ajuste de NTP, que ya está funcionando correctamente.
 
 Las 8 corridas fallidas **no se borraron** — siguen en el historial del
 panel (`eligible=False`, con `exclusion_reasons`) y en
@@ -268,28 +299,41 @@ este diseño (sin contar los valores adicionales de `f` que pide el
 brief, no generados en este piloto).
 
 **No se propone un reparto numérico de "cuántos controles, cuántos sobre
-el umbral y cuántos valores de f"** porque: (a) el N de 25 es preliminar
-(§4, n=2 pares); (b) el presupuesto de horas («horas» en el brief) no
-tiene un valor — 37h ya es significativo y probablemente exceda lo
-razonable para una sola campaña de tesis sin una decisión explícita del
-presupuesto disponible. (El hallazgo de §2 ya **no** bloquea esto — los
-3 fixes quedaron corregidos, probados y desplegados al servidor real en
-esta misma rama, confirmados en vivo contra las 60 corridas del piloto.)
+el umbral y cuántos valores de f"** porque el N de 25 sigue siendo
+preliminar (§4, n=2 pares) — el presupuesto de horas (confirmado, 37h,
+ver abajo) y el EMI (confirmado, 10pp) ya no son los bloqueantes.
+
+**Actualización 2026-10-20 (post-piloto)**:
+
+- **Presupuesto confirmado: ~37h.** Alcanza exactamente para el N=25
+  preliminar (parte individual + multidominio, sin valores extra de f),
+  calculado en §6.
+- **EMI confirmado: 10pp** — igual al supuesto ya usado en §4; el N=25
+  (precisión) / N=12 (potencia) de la composición confirmatoria quedan
+  como el N de trabajo para la campaña, sujeto al punto siguiente.
+- **Causa de los 8 fallos de reloj investigada y explicada** (§1,
+  actualizado): no es un problema de NTP — los nodos y el control están
+  bien sincronizados de forma independiente. El candidato real es
+  crecimiento de memoria sin límite en `benign-lab-web.service` durante
+  sesiones largas y continuas (tasa confirmada en vivo: ~1,5GB/90min).
+  Mitigación recomendada: reiniciar el servicio cada 2-3h durante la
+  campaña — no requiere tocar la lógica de sincronización de reloj.
 
 ## 7. Punto de control
 
-**No se inició la campaña.** Antes de hacerlo, en orden de prioridad:
+**No se inició la campaña.** Queda un solo punto abierto antes de
+hacerlo:
 
-1. Confirmar el presupuesto de horas disponible y el valor de EMI/margen
-   (§4 usó supuestos razonados, no decisiones tuyas).
-2. Decidir si repetir el piloto (con más pares por composición, ahora
+1. Decidir si repetir el piloto (con más pares por composición, ahora
    que el emparejamiento automático funciona de verdad) antes de fijar
-   N, dado que n=2 sigue siendo una base muy débil para la composición
-   confirmatoria.
-3. Investigar la causa de los 8 fallos por reloj/timeout (§1) antes de
-   comprometerse a sesiones de campaña de varias horas seguidas.
+   N en firme, dado que n=2 sigue siendo una base muy débil para la
+   composición confirmatoria — **recomendación: sí**, al menos para
+   composition3 (la confirmatoria), antes de comprometer el N=25 a 37h
+   reales de laboratorio.
 
 El hallazgo de §2 (agrupación M-I automática) queda **cerrado**: 3
 causas encontradas, corregidas, probadas (6 pruebas de regresión nuevas,
 cada una confirmada fallando sin su fix) y desplegadas y reconfirmadas
-en vivo contra el propio piloto.
+en vivo contra el propio piloto. El hallazgo de §1 (fallos de reloj)
+queda **explicado** (no corregido — la mitigación es operativa, reiniciar
+el servicio periódicamente, no un cambio de código).
