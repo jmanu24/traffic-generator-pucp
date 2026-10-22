@@ -9,9 +9,12 @@ from benign_lab.config import ROOT
 def manager(tmp_path):
  root=tmp_path/'runs';root.mkdir();m=SimpleNamespace(runs={},events={},folder=lambda rid:root/rid);return m
 
-def record(m,rid,seed=1,delivery=.9,pipeline='baseline',status='completed',capacity=100,detection_mode=None,hardware=False,attack_plan_hash=None,cycle_correlation_flag=None,active_blocks_at_start=None):
- p=generate(load_profiles(ROOT/'profiles'),seed,5,{d:capacity for d in ('mobile','fixed','enterprise','peering')});folder=m.folder(rid);folder.mkdir()
- r=dict(id=rid,status=status,mode='lab',purpose='baseline_plan',scenario='B0',pipeline=pipeline,detection_mode=detection_mode,attack_plan_hash=attack_plan_hash,seed=seed,plan_hash=p['plan_hash'],execution_hash='exec',execution_profile='coordinated',duration_s=5,elapsed_s=5,created_at=100,started_at=100,finished_at=105,agents={},observed_attacks=[],attack_windows=[],experiment_context={'schema':1,'captured_at':seed,'transport':{'transport':'wired'}})
+def record(m,rid,seed=1,delivery=.9,pipeline='baseline',status='completed',capacity=100,detection_mode=None,hardware=False,attack_plan_hash=None,cycle_correlation_flag=None,active_blocks_at_start=None,duration_s=5,attack_window=None):
+ p=generate(load_profiles(ROOT/'profiles'),seed,duration_s,{d:capacity for d in ('mobile','fixed','enterprise','peering')});folder=m.folder(rid);folder.mkdir()
+ scenario='B0+attack' if attack_window else 'B0'
+ observed=[dict(name='atk',start_s=attack_window[0],end_s=attack_window[1],annotation_source='attack_runner')] if attack_window else []
+ attack_windows=[dict(name='atk',start_s=attack_window[0],end_s=attack_window[1])] if attack_window else []
+ r=dict(id=rid,status=status,mode='lab',purpose='baseline_plan',scenario=scenario,pipeline=pipeline,detection_mode=detection_mode,attack_plan_hash=attack_plan_hash,seed=seed,plan_hash=p['plan_hash'],execution_hash='exec',execution_profile='coordinated',duration_s=duration_s,elapsed_s=duration_s,created_at=100,started_at=100,finished_at=100+duration_s,agents={},observed_attacks=observed,attack_windows=attack_windows,attack_source_ips=[],experiment_context={'schema':1,'captured_at':seed,'transport':{'transport':'wired'}})
  es={e['event_id']:dict(e,status='completed',bytes_tx=int(e['planned_bytes']*delivery),bytes_rx=0,lateness_s=.01) for e in p['events']}
  (folder/'run.json').write_text(json.dumps(r));(folder/'benign_plan.json').write_text(json.dumps(p));(folder/'event_states.json').write_text(json.dumps(es));(folder/'lab_snapshot.json').write_text(json.dumps({'nodes':{},'targets':{}}))
  if hardware:
@@ -106,6 +109,48 @@ def test_same_attack_plan_pairs_c3_and_c4_correctly(tmp_path):
  assert comparison['factor']=='detection_mode'
  assert all(match['attack_plan_hash']=='attackA' for match in comparison['matches'])
  assert comparison['statistics']['seed_balanced']['mean']==pytest.approx(30,abs=.1)
+
+def test_availability_pct_is_the_thesis_principal_metric_with_mi_pairing(tmp_path):
+ """D7: response_metrics.py's A (not delivery_pct) must work as a first-class
+ metric -- same M-I pairing report() already does for every other metric,
+ no special-cased code path. duration_s=90 so the attack window (60-90s)
+ clears the fixed 60s warmup (profiles/common.yaml); delivery=.6 fails the
+ D=90% PASS rule in every eligible window (A=0%), delivery=.95 passes it
+ (A=100%) -- a clean, non-degenerate M-I delta to pair on."""
+ m=manager(tmp_path)
+ for seed in [1,2]:
+  record(m,'c3-'+str(seed),seed,delivery=.6,pipeline='enabled',detection_mode='isolated',hardware=True,attack_plan_hash='attackA',duration_s=90,attack_window=(60,90))
+  record(m,'c4-'+str(seed),seed,delivery=.95,pipeline='enabled',detection_mode='multidomain',hardware=True,attack_plan_hash='attackA',duration_s=90,attack_window=(60,90))
+ a=ExperimentalAnalytics(tmp_path,m)
+ d=a.detail('c3-1')
+ assert d['selected_metric']['availability_pct']==pytest.approx(0,abs=.1)
+ d4=a.detail('c4-1')
+ assert d4['selected_metric']['availability_pct']==pytest.approx(100,abs=.1)
+ r=a.report(list(m.runs),metric='availability_pct')
+ assert r['metric']=='availability_pct' and r['unit']=='%'
+ assert len(r['group_comparisons'])==1
+ comparison=r['group_comparisons'][0]
+ assert comparison['factor']=='detection_mode'
+ assert comparison['statistics']['seed_balanced']['mean']==pytest.approx(100,abs=.1)
+ # delivery_pct must still be available, unaffected -- additive, not a replacement.
+ assert d['selected_metric']['delivery_pct']==pytest.approx(60,abs=.1)
+
+def test_availability_pct_is_domain_scoped_like_every_other_metric(tmp_path):
+ m=manager(tmp_path)
+ record(m,'only',1,delivery=.6,pipeline='enabled',detection_mode='isolated',duration_s=90,attack_window=(60,90))
+ a=ExperimentalAnalytics(tmp_path,m)
+ whole=a.detail('only',domain='all')['selected_metric']['availability_pct']
+ per_domain=a.detail('only',domain='mobile')['selected_metric']['availability_pct']
+ assert whole==pytest.approx(0,abs=.1)
+ assert per_domain==pytest.approx(0,abs=.1)  # same flat .6 delivery on every domain's own events too
+
+def test_availability_pct_is_none_without_a_confirmed_attack_window(tmp_path):
+ # No observed_attacks at all (e.g. a C1 benign-only run) -- response_metrics
+ # itself has no attack window to measure A over; must report None, not 0,
+ # and must never raise.
+ m=manager(tmp_path);record(m,'c1',pipeline='enabled')
+ d=ExperimentalAnalytics(tmp_path,m).detail('c1')
+ assert d['selected_metric']['availability_pct'] is None
 
 def test_policy_comparability_ignores_detection_mode_flag_in_threshold_hash(tmp_path):
  """D7-pilot regression (docs/PILOT_RESULT.md section 2): the controller's

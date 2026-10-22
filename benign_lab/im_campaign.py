@@ -18,6 +18,7 @@ C1-M minus C1-I is the false-positive-rate counterpart under benign-only
 traffic. experimental_analytics.report()/detail() already pair runs sharing
 a plan_hash/execution_hash whose grouping differs only by detection_mode.
 """
+import random
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -30,11 +31,6 @@ _SPEC = {
     'C3': dict(scenario='B0+attack', pipeline='enabled', detection_mode='isolated', has_attack=True),
     'C4': dict(scenario='B0+attack', pipeline='enabled', detection_mode='multidomain', has_attack=True),
 }
-
-# Order groups by detection_mode (None/C2 first, then isolated, then
-# multidomain) so a schedule needs at most one controller mode switch,
-# regardless of how many blocks it covers.
-_MODE_ORDER = {None: 0, 'isolated': 1, 'multidomain': 2}
 
 
 @dataclass(frozen=True)
@@ -57,15 +53,43 @@ def block_runs(seed, scenario_id):
     ]
 
 
-def build_schedule(seeds, scenario_ids):
-    """All blocks (seed x scenario_id), grouped by detection_mode to
-    minimize controller restarts; within a group, ordered by seed then
-    scenario_id then condition for reproducibility."""
+IM_CAMPAIGN_RNG_SEED = 20261022  # arbitrary, recorded here for reproducibility
+# -- same convention as pilot_schedule.PILOT_RNG_SEED; the value itself has
+# no significance, only that it is fixed and this module names it.
+
+
+def build_schedule(seeds, scenario_ids, rng_seed=IM_CAMPAIGN_RNG_SEED):
+    """All blocks (seed x scenario_id), seeds in the given order (never
+    reordered), each seed's own runs shuffled in a reproducible random
+    order -- the SAME scheme pilot_schedule.build_pilot_schedule() already
+    uses for the pilot, not grouped by detection_mode.
+
+    D7: grouping by mode (the previous behaviour) minimized restarts, but
+    that is exactly the problem -- it makes "how many seconds since the
+    controller last restarted" and "how many runs since a mode switch"
+    almost perfectly collinear with detection_mode itself, so any
+    difference the campaign measures between I and M can never rule out
+    a restart/order confound instead of a real treatment effect (this is
+    the mechanism docs/PILOT_DIAGNOSIS.md §4/§7 found live in the pilot:
+    reinicio y modo quedaron confundidos al 100%). Shuffling within each
+    seed, independent of mode, breaks that collinearity -- restarts and
+    runs-since-restart now vary somewhat independently of which mode a
+    given run happens to request.
+
+    A single random.Random(rng_seed) is consumed across seeds in
+    increasing order, so the whole schedule is reproducible from that one
+    recorded integer -- same property pilot_schedule.build_pilot_schedule()
+    already has, and for the same reason (a campaign run is real lab time
+    that must be exactly replayable from its own log)."""
     if not seeds or not scenario_ids:
         raise ValueError('build_schedule requires at least one seed and one scenario_id')
-    runs = [run for seed in seeds for scenario_id in scenario_ids for run in block_runs(seed, scenario_id)]
-    runs.sort(key=lambda r: (_MODE_ORDER[r.detection_mode], r.seed, r.scenario_id, CONDITIONS.index(r.condition)))
-    return runs
+    rng = random.Random(rng_seed)
+    schedule = []
+    for seed in seeds:
+        block = [run for scenario_id in scenario_ids for run in block_runs(seed, scenario_id)]
+        rng.shuffle(block)
+        schedule.extend(block)
+    return schedule
 
 
 def mode_switches(schedule):

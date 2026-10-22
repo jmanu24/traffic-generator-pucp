@@ -13,21 +13,39 @@ from benign_lab.runner import Manager
 import benign_lab.runner as runner
 
 
+@pytest.fixture(autouse=True)
+def _no_real_post_restart_settle_wait(monkeypatch):
+    """D7, change 4 (option B): verify_clean_forwarding_state()'s settle
+    wait is a real asyncio.sleep -- correct (and necessary) against the
+    real lab, but these tests construct a fresh Manager() per test and
+    would otherwise really sleep every time log_evidence says
+    controller_restarted=True. Patching the module constants BEFORE each
+    test's own Manager(...) call -- the instance copies them at __init__
+    time, same reason verify_detection_mode_in_audit's own timeout is a
+    parameter, not hardcoded in its body."""
+    monkeypatch.setattr(runner, 'POST_RESTART_SETTLE_S', 0)
+    monkeypatch.setattr(runner, 'POST_RESTART_CHECK_TIMEOUT_S', 5)
+
+
 class FakeAudit:
     """Minimal stand-in for DetectionAuditMonitor: .enabled + .rows().
     Reports a single kind=cycle record with its timestamp always equal to
     whatever `end` the caller queried with -- avoids a real audit stream's
     actual timing races (apply_detection_mode's polling window moves every
     call) without needing this fake to guess the right wall-clock moment."""
-    def __init__(self, enabled=True, value=None):
+    def __init__(self, enabled=True, value=None, active_blocks=None):
         self.enabled = enabled
         self.value = value
+        self.active_blocks = active_blocks  # D7, change 4 option B's own check
 
     def rows(self, start, end, after=0):
         if self.value is None:
             return []
-        return [dict(kind='cycle', event_id='e1', timestamp=end,
-                     thresholds={'values': {'DETECTION_CROSS_DOMAIN_CORRELATION': self.value}})]
+        row = dict(kind='cycle', event_id='e1', timestamp=end,
+                   thresholds={'values': {'DETECTION_CROSS_DOMAIN_CORRELATION': self.value}})
+        if self.active_blocks is not None:
+            row['active_blocks'] = self.active_blocks
+        return [row]
 
 
 class StaleThenFreshAudit:
@@ -165,6 +183,70 @@ def test_apply_detection_mode_still_restarts_when_mode_differs_from_current(tmp_
     r = asyncio.run(run())
     assert applied == ['multidomain']
     assert r['detection_mode_verification']['log_evidence'] == dict(applied='multidomain', controller_restarted=True)
+
+
+def test_restart_runs_the_post_restart_forwarding_check_and_sets_seconds_since_restart(tmp_path, monkeypatch):
+    """D7, change 4 (option B) + change 5: a REAL restart (not skipped)
+    must run verify_clean_forwarding_state() and set both
+    last_controller_restart_at (Manager-lifetime) and this run's own
+    seconds_since_restart covariate -- a small, non-None value right after
+    a restart that reported no residual active_blocks."""
+    m = Manager(tmp_path / 'runs')
+    cfg = base_cfg()
+    class Control:
+        def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
+        async def apply(self, requested): return dict(applied=requested, controller_restarted=True)
+    monkeypatch.setattr(runner, 'DetectionModeControl', Control)
+    m.audit = FakeAudit(value=True, active_blocks={})
+    bare_run(m, 'x')
+    assert m.last_controller_restart_at is None
+    asyncio.run(m.apply_detection_mode('x', cfg, 'multidomain'))
+    r = m.runs['x']
+    assert m.last_controller_restart_at is not None
+    assert r['detection_mode_verification']['post_restart_forwarding_state']['active_blocks'] == {}
+    assert r['seconds_since_restart'] is not None and 0 <= r['seconds_since_restart'] < 5
+
+
+def test_residual_active_blocks_after_restart_raises_and_blocks_the_run(tmp_path, monkeypatch):
+    """The exact leftover-mitigation mechanism docs/PILOT_DIAGNOSIS.md §6
+    found live (a block from the PREVIOUS run still draining through its
+    own release delay) must stop THIS run from starting, same posture as
+    BaselineGuard's own residual-OpenFlow-rule check for C2 -- for I or M
+    equally, not silently tolerated for one and not the other."""
+    m = Manager(tmp_path / 'runs')
+    cfg = base_cfg()
+    class Control:
+        def __init__(self, cfg): pass
+        async def read(self): return {'override': None}
+        async def apply(self, requested): return dict(applied=requested, controller_restarted=True)
+    monkeypatch.setattr(runner, 'DetectionModeControl', Control)
+    m.audit = FakeAudit(value=True, active_blocks={'mobile': 5})
+    bare_run(m, 'x')
+    with pytest.raises(RuntimeError, match='Residual active_blocks'):
+        asyncio.run(m.apply_detection_mode('x', cfg, 'multidomain'))
+
+
+def test_skipped_restart_does_not_rerun_the_forwarding_check_but_keeps_seconds_since_restart(tmp_path, monkeypatch):
+    """A skip (already in the requested mode) changes nothing about the
+    controller's forwarding state -- the previous restart's own check
+    already covered it, so this must not call verify_clean_forwarding_state
+    again, while seconds_since_restart keeps tracking the SAME last
+    restart, correctly growing across runs that skip their own restart."""
+    m = Manager(tmp_path / 'runs')
+    cfg = base_cfg()
+    class Control:
+        def __init__(self, cfg): pass
+        async def read(self): return {'override': 'multidomain'}
+        async def apply(self, requested): raise AssertionError('apply() must not be called on a skip')
+    monkeypatch.setattr(runner, 'DetectionModeControl', Control)
+    m.last_controller_restart_at = time.time() - 42
+    m.audit = FakeAudit(value=True)  # no active_blocks key at all on this fake -- must never be consulted
+    bare_run(m, 'x')
+    asyncio.run(m.apply_detection_mode('x', cfg, 'multidomain'))
+    r = m.runs['x']
+    assert 'post_restart_forwarding_state' not in r['detection_mode_verification']
+    assert r['seconds_since_restart'] == pytest.approx(42, abs=1)
 
 
 def test_since_is_captured_after_apply_not_before_the_slow_restart(tmp_path, monkeypatch):

@@ -3,11 +3,20 @@ import collections,csv,hashlib,io,json,math,re,statistics,threading,time,zipfile
 from pathlib import Path
 from .planner import plan_hash as compute_plan_hash,validate
 from .detection_evaluation import evaluate
+from . import attacker_rate_monitor
 
 T975=[12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228,2.201,2.179,2.160,2.145,2.131,2.120,2.110,2.101,2.093,2.086,2.080,2.074,2.069,2.064,2.060,2.056,2.052,2.048,2.045,2.042]
 TERMINAL={'completed','completed_with_errors','failed','stopped','interrupted'}
 DOMAINS=('mobile','fixed','enterprise','peering')
-METRICS={'delivery_pct':('%','Entrega de cuota'),'mean_mbps':('Mbps','Payload medio'),'failed_pct':('%','Eventos fallidos'),'lateness_p95_ms':('ms','Retraso p95 al iniciar'),'detection_fpr_pct':('%','FP de detección'),'decision_fpr_pct':('%','FP de decisión')}
+METRICS={'delivery_pct':('%','Entrega de cuota'),'mean_mbps':('Mbps','Payload medio'),'failed_pct':('%','Eventos fallidos'),'lateness_p95_ms':('ms','Retraso p95 al iniciar'),'detection_fpr_pct':('%','FP de detección'),'decision_fpr_pct':('%','FP de decisión'),'availability_pct':('%','Disponibilidad A (ventana de ataque)')}
+# 'availability_pct' is the thesis's own principal indicator for C2/C3/C4
+# (response_metrics.py's A, not delivery_pct) -- added here, not as a
+# separate code path, so report()'s EXISTING M-I pairing (pairs/
+# group_comparisons below) already works for it with no changes: both
+# just read whatever `metric` names from each run's own `selected_metric`
+# dict, which detail() now also populates with 'availability_pct' (see
+# its own comment). delivery_pct is kept, unchanged, as the complementary
+# indicator the brief asks for -- this is additive, nothing was removed.
 METHOD=dict(unit='execution',cluster='seed',mean='equal weight to each seed mean',confidence='two-sided Student t, df = independent seeds - 1; conservative df=30 cap',assumptions=['Independent seed means under comparable conditions','Approximate normality of seed means; no automatic normality validation','Events and windows are not independent experimental repeats','pipeline, policy and detection_mode are the only single-factor differences a paired comparison treats as a verified A/B candidate; any other combination of differing grouping fields is reported as descriptive only'],sources=['https://www.itl.nist.gov/div898/handbook/eda/section3/eda352.htm','https://www.itl.nist.gov/div898/handbook/eda/section3/eda3672.htm','https://www.itl.nist.gov/div898/handbook/prc/section3/prc312.htm'])
 
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
@@ -140,6 +149,7 @@ class ExperimentalAnalytics:
    temp=self.index_path.with_suffix('.tmp');temp.write_text(json.dumps(dict(code_hash=self.code_hash,entries=entries)));temp.replace(self.index_path)
    return dict(items=rows,counts=dict(total=len(rows),eligible=sum(r['eligible'] for r in rows),aborted_before_traffic=sum(not finite(r.get('started_at')) for r in rows),diagnostics=sum('diagnostic' in r['exclusion_reasons'] for r in rows),simulations=sum(r['mode']=='simulation' for r in rows)),method=METHOD,generated_at=time.time())
  def detail(self,rid,domain='all'):
+  from . import response_metrics as rm  # see the computation below for why this is lazy, not top-level
   with self.lock:
    folder=self.folder(rid);summary=self.summary(rid);signature=self.fingerprint(folder,['run.json','metrics.jsonl','vm_resources.jsonl','host_metrics.jsonl','detection_events.jsonl','interface_metrics.jsonl','event_states.json'])
    cached=self.detail_cache.get(rid)
@@ -148,6 +158,26 @@ class ExperimentalAnalytics:
     p=read_json(folder/'benign_plan.json',{});r=dict(self.manager.runs.get(rid) or read_json(folder/'run.json',{}));r['_lab']=read_json(folder/'lab_snapshot.json',{});states=self.manager.events.get(rid) or read_json(folder/'event_states.json',{});es=list(states.values()) if isinstance(states,dict) else states or []
     records=list(lines(folder/'detection_events.jsonl'));interfaces=list(lines(folder/'interface_metrics.jsonl')) if records else []
     evaluation=evaluate(p,r,records,interfaces,es) if p and r.get('started_at') is not None and summary['integrity']=='verified' else dict(available=False,domains=[],windows=[],ip_changes=[])
+    # D7: response_metrics.py's own A (not delivery_pct) for the thesis's
+    # principal indicator (METRICS['availability_pct'] above), plus tE
+    # from attacker_rate.jsonl (D7 §2's own independent collector,
+    # AttackerRateMonitor in attacker_rate_monitor.py) when that file
+    # exists -- {} (not an error) for any run that never had one (B0-only
+    # runs, or runs predating this collector), same censoring compute()
+    # already does for an explicitly empty rate_series.
+    try:
+     attack_plan=json.loads((folder/'attack_plan.json').read_text()) if (folder/'attack_plan.json').exists() else None
+     rate_series=(attacker_rate_monitor.rate_series_from_samples(
+         [json.loads(line) for line in (folder/'attacker_rate.jsonl').read_text().splitlines() if line.strip()],
+         attacker_rate_monitor.domain_sources(attack_plan,r.get('_lab',{})))
+         if attack_plan is not None and (folder/'attacker_rate.jsonl').exists() else {})
+     # `records` may legitimately be empty (no LAB_AUDIT capture, e.g. a
+     # pipeline='baseline' C2 run) -- compute() handles that itself
+     # (tD/tO/tI simply come back censored); availability_pct only needs
+     # plan/run/event_states, so an empty `records` must not block it.
+     response_metrics=rm.compute(p,r,records,event_states=es,rate_series=rate_series) if p and finite(r.get('started_at')) and summary['integrity']=='verified' else dict(available=False)
+    except (KeyError,ValueError,ZeroDivisionError,OSError):
+     response_metrics=dict(available=False)
     metrics=list(lines(folder/'metrics.jsonl'));resource_groups=collections.defaultdict(list);start=r.get('started_at');end=start+r.get('elapsed_s',0) if finite(start) else None
     for filename in ['vm_resources.jsonl','host_metrics.jsonl']:
      for row in lines(folder/filename):
@@ -162,13 +192,24 @@ class ExperimentalAnalytics:
      resources.append(dict(host=host,platform=rows[0].get('platform'),samples=len(rows),cpu_mean_pct=weighted('cpu_pct'),cpu_p95_pct=percentile([x.get('cpu_pct') for x in rows],.95),ready_mean_pct=weighted('ready_vcpu_pct'),memory_mean_pct=weighted('memory_pct'),logical_cpus=cpus))
     if not hardware and 'Guest hardware evidence missing' not in summary['warnings']:summary['warnings'].append('Guest hardware evidence missing')
     if not evaluation.get('threshold_snapshots') and 'Detector policy evidence missing' not in summary['warnings']:summary['warnings'].append('Detector policy evidence missing')
-    base=dict(summary=summary,evaluation=evaluation,resources=resources,hardware=hardware,metrics=metrics,plan=p,initial_cycles=[x for x in records if x.get('kind')=='cycle' and finite(start) and start<=x['timestamp']<start+5])
+    base=dict(summary=summary,evaluation=evaluation,response_metrics=response_metrics,resources=resources,hardware=hardware,metrics=metrics,plan=p,run=r,event_states=es,initial_cycles=[x for x in records if x.get('kind')=='cycle' and finite(start) and start<=x['timestamp']<start+5])
     if summary['status'] in TERMINAL:self.detail_cache[rid]=(signature,base)
     if len(self.detail_cache)>48:self.detail_cache.pop(next(iter(self.detail_cache)))
    payload=[dict(x) for x in base['summary']['metrics']]
    for item in payload:
     d=item['domain'];fp=[x for x in base['evaluation'].get('domains',[]) if d=='all' or x['domain']==d];n=sum(x['eligible_benign_windows'] for x in fp)
     item.update(detection_fpr_pct=100*sum(x['detection_fp'] for x in fp)/n if n else None,decision_fpr_pct=100*sum(x['decision_fp'] for x in fp)/n if n else None,eligible_benign_domain_windows=n,reported_restricted_seconds=sum(x['reported_restricted_seconds'] for x in fp))
+    # 'all' reuses compute()'s own whole-run A (base['response_metrics']);
+    # a single domain gets its own windows/PASS rule via
+    # compute_domain_availability() -- same module, same definitions,
+    # just plan/event_states pre-filtered to that domain.
+    rmetrics=base['response_metrics']
+    if rmetrics.get('available',True) is False or not base.get('plan') or base.get('run') is None:
+     item['availability_pct']=None
+    elif d=='all':
+     item['availability_pct']=rmetrics.get('availability_pct')
+    else:
+     item['availability_pct']=rm.compute_domain_availability(base['plan'],base['run'],base['event_states'],d).get('availability_pct')
    policy=base['evaluation'].get('threshold_snapshots',[]);policy_ids=sorted({policy_comparability_id(x) for x in policy});recorded_context=base['summary'].get('context');context={k:v for k,v in recorded_context.items() if k not in ('captured_at','run_id')} if recorded_context else dict(provenance='legacy_unknown')
    first_cycles=base['initial_cycles']
    initial_state='not_recorded' if not first_cycles else ('reported_restricted' if any(any(v>0 for v in x.get('active_blocks',{}).values()) for x in first_cycles) else 'reported_clear')
@@ -246,7 +287,7 @@ class ExperimentalAnalytics:
  def import_archive(self,raw):
   if len(raw)>32*1024**2:raise ValueError('ZIP exceeds 32 MiB')
   with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-   allowed={'run.json','benign_plan.json','event_states.json','lab_snapshot.json','metrics.jsonl','vm_resources.jsonl','host_metrics.jsonl','interface_metrics.jsonl','detection_events.jsonl','detection_evaluation.json','ground_truth_windows.csv','execution_mapping.json','execution_profile.json','logs.jsonl'}
+   allowed={'run.json','benign_plan.json','event_states.json','lab_snapshot.json','metrics.jsonl','vm_resources.jsonl','host_metrics.jsonl','interface_metrics.jsonl','detection_events.jsonl','detection_evaluation.json','ground_truth_windows.csv','execution_mapping.json','execution_profile.json','logs.jsonl','response_metrics.json'}
    if any('/' in n or '\\' in n for n in archive.namelist()):raise ValueError('ZIP must contain flat exported data files')
    if len(archive.infolist())>100 or sum(x.file_size for x in archive.infolist())>256*1024**2:raise ValueError('Archive exceeds extraction limits')
    if any(n not in archive.namelist() for n in ['run.json','benign_plan.json','event_states.json']):raise ValueError('Missing experiment data')

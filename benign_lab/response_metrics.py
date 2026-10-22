@@ -216,6 +216,23 @@ def compute_availability(plan, run, tA, tF, event_states, cfg):
     return dict(availability_pct=availability, eligible_window_count=len(eligible_windows), tS=tS, TR=TR)
 
 
+def compute_domain_availability(plan, run, event_states, domain, config=None):
+    """D7/analytics: A restricted to one domain's own events, same windows
+    and PASS rule as compute_availability() -- just plan['events'] and
+    event_states filtered to `domain` first. Used to let
+    experimental_analytics.report() offer 'availability_pct' per domain,
+    same as every other metric in METRICS already does; `compute()` itself
+    stays domain-agnostic (the brief's own tA/tD/tO/tE definitions are
+    whole-run, not per-domain -- only A's own PASS/FAIL windowing is
+    meaningful to slice by domain, since delivered-vs-planned bytes already
+    are)."""
+    cfg = dict(DEFAULTS, **(config or {}))
+    tA_rel, tF_rel, _, _ = _attack_window(run)
+    dom_plan = dict(plan, events=[e for e in plan.get('events', []) if e.get('domain') == domain])
+    dom_es = [e for e in (event_states or []) if e.get('domain') == domain]
+    return compute_availability(dom_plan, run, tA_rel, tF_rel, dom_es, cfg)
+
+
 def coverage(results):
     """Cross-run proportions: detected / mitigated effective / recovered."""
     n = len(results)

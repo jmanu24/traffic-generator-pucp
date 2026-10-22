@@ -389,6 +389,21 @@ async def attack_flood(e, target, metrics, deadline, context=None):
             metrics['bytes_tx'] += count * packet
             sent += count
         finally:
+            # `hping.kill()` above (asyncio's SIGKILL on the `sudo -n hping3`
+            # subprocess) only reaches the sudo wrapper, not hping3 itself --
+            # confirmed live (2026-10-22, real lab): with pty/use_pty sudo
+            # forks a monitor process around the actual command instead of
+            # exec-replacing itself, and SIGKILL is uncatchable, so the
+            # monitor dies without a chance to forward anything to its own
+            # child, which is simply orphaned (reparented to init) and keeps
+            # flooding -- found as 8+ hping3 processes from past runs still
+            # running, hours later, across enterprise/mobile/fixed hosts.
+            # port/sport_base are fixed constants (not per-run-unique), so
+            # this pattern can only ever match an hping3 THIS agent spawned.
+            reap = await asyncio.create_subprocess_exec(
+                'sudo', '-n', 'pkill', '-9', '-f', f'hping3 --syn -p {port} -s {sport_base}',
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await reap.wait()
             cleanup = await asyncio.create_subprocess_exec(
                 'sudo', '-n', 'nft', 'delete', 'table', 'ip', table,
                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)

@@ -24,6 +24,41 @@ from .planner import canonical, digest, validate
 
 TERMINAL = {'completed','completed_with_errors','failed','stopped','interrupted'}
 
+# D7, change 4, option B: "tras cada reinicio, esperar un tiempo fijo antes
+# del tráfico y comprobar que no quedan bloqueos activos ni reglas
+# residuales" -- chosen over option A (restart before EVERY pipeline=enabled
+# run, whether or not the mode actually changed) because the mechanism
+# docs/PILOT_DIAGNOSIS.md §6 actually found live was residual mitigation
+# STATE leaking from the PREVIOUS run into the next one's first cycles
+# (confirmed: one real pilot run showed active_blocks={} for ~3s then a
+# block appearing at t=3.86s, well before that run's own attack could have
+# caused it) -- not restart COUNT itself. Option A would still restart
+# unconditionally without checking the thing that actually leaked, and pays
+# a ~60s restart on every single pipeline=enabled run (48/60 in the pilot)
+# instead of only when a restart really happens. Option B targets that
+# exact mechanism directly, for both I and M equally, and is cheaper.
+POST_RESTART_SETTLE_S = 5  # same order as COLLECT_INTERVAL (0.5s in the
+# pilot's own LAB_AUDIT snapshots) x a few cycles -- enough to observe
+# active_blocks settle after a restart, not an arbitrary round number.
+POST_RESTART_CHECK_TIMEOUT_S = 30
+
+
+def _panel_process_memory_kb():
+    """D7, change 5: this panel process's own RSS, read the same way any
+    `ps`/`top` would (/proc/self/status -- no new dependency). Covariate,
+    not a gate: PILOT_RESULT.md already found benign-lab-web.service's own
+    memory growing unboundedly over a long session as a confounder
+    candidate for the clock-skew failures there; this records it per run
+    so a campaign can check for that correlation directly instead of
+    reconstructing it after the fact from systemd logs."""
+    try:
+        for line in Path('/proc/self/status').read_text().splitlines():
+            if line.startswith('VmRSS:'):
+                return int(line.split()[1])  # kB, per proc(5)
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
 
 def atomic_json(path, value):
     tmp = path.with_suffix('.tmp')
@@ -62,6 +97,17 @@ class Manager:
         # which apply_detection_mode treats as verification being
         # impossible, never as an unverified pass.
         self.audit=None
+        # D7, change 4/5: when the real controller was last confirmed
+        # restarted, this Manager's own process lifetime only (never
+        # reconstructed from historical runs on an orchestrator restart --
+        # the covariate is then None, "unknown this process", not guessed).
+        self.last_controller_restart_at=None
+        # Instance attributes, not the bare module constants, so tests can
+        # override them (e.g. to 0) without a real sleep -- same reason
+        # verify_detection_mode_in_audit's own timeout is a parameter, not
+        # hardcoded in its body.
+        self.post_restart_settle_s=POST_RESTART_SETTLE_S
+        self.post_restart_check_timeout_s=POST_RESTART_CHECK_TIMEOUT_S
         for file in sorted(self.root.glob('*/run.json')):
             run=json.loads(file.read_text())
             eid=run['id']
@@ -217,6 +263,20 @@ class Manager:
                # so that a live restart of the controller is never a
                # side effect of starting a run.
                detection_mode=detection_mode,
+               # D7, change 5: covariates, recorded for every run regardless
+               # of mode/pipeline, not just the lab-enabled ones apply_
+               # detection_mode() touches. sequence_position is this
+               # Manager's own ordinal among every run it has ever started
+               # (including ones loaded from disk at __init__, so it
+               # survives an orchestrator restart as a real position, not a
+               # per-process counter restarting at 0). seconds_since_restart
+               # is provisional here -- apply_detection_mode() (lab+enabled
+               # runs only) overwrites it with a fresher value once this
+               # run's own mode has been confirmed, closer to when traffic
+               # actually starts; a baseline/C2 run keeps this value.
+               sequence_position=len(self.runs),
+               seconds_since_restart=(time.time()-self.last_controller_restart_at) if self.last_controller_restart_at is not None else None,
+               panel_process_memory_kb_at_start=_panel_process_memory_kb(),
                execution_profile=options['profile'],execution_options=options,execution_hash=digest(options),baseline_control={},metrics_kind='simulated_payload' if mode=='simulation' else 'application_payload')
         self.runs[rid]=r
         self.plan_cache[rid]=plan
@@ -302,6 +362,8 @@ class Manager:
                 # no attack_plan (attack_task stays None).
                 attack_task=None
                 on_benign_start=None
+                rate_monitor=None
+                rate_monitor_task=None
                 if attack_plan is not None:
                     loop=asyncio.get_event_loop();benign_start=loop.create_future()
                     def on_benign_start(epoch,_f=benign_start):
@@ -312,11 +374,25 @@ class Manager:
                         report=await run_attack(attack_plan,cfg,start_lead_s=epoch-time.time(),on_log=lambda m:self.log(rid,'attack: '+m))
                         self.record_attack_evidence(rid,report)
                     attack_task=asyncio.create_task(launch_attack())
+                    # D7, change 2: independent attacker-rate series for
+                    # response_metrics.py's tE -- runs for the whole
+                    # attack_task lifetime (same guard: only when an
+                    # attack_plan actually exists), stopped and persisted
+                    # in the SAME finally blocks as attack_task below, so
+                    # a stopped/failed run still keeps whatever it
+                    # collected (conservar ejecuciones fallidas).
+                    if cfg.get('baseline_control',{}).get('pe_host'):
+                        from .attacker_rate_monitor import AttackerRateMonitor
+                        victim_ip=cfg['targets'][attack_plan['events'][0]['destination']]['host']
+                        rate_monitor=AttackerRateMonitor(cfg,attack_plan,victim_ip)
+                        rate_monitor_task=asyncio.create_task(rate_monitor.run())
+                    else:
+                        self.log(rid,'Attacker-rate monitor skipped: baseline_control.pe_host is not configured','warning')
                 real_kwargs=dict(on_start=on_benign_start) if attack_task else {}
                 if guard and r['pipeline']=='baseline':
                     traffic=asyncio.create_task(self.real(rid,plan,cfg,groups,**real_kwargs))
                     monitor=asyncio.create_task(guard.monitor())
-                    watch=[traffic,monitor]+([attack_task] if attack_task else [])
+                    watch=[traffic,monitor]+([attack_task] if attack_task else [])+([rate_monitor_task] if rate_monitor_task else [])
                     try:
                         done,_=await asyncio.wait(watch,return_when=asyncio.FIRST_COMPLETED)
                         if monitor in done:await monitor
@@ -334,6 +410,7 @@ class Manager:
                         for task in watch:
                             if not task.done():task.cancel()
                         await asyncio.gather(*watch,return_exceptions=True)
+                        if rate_monitor:rate_monitor.save(self.folder(rid)/'attacker_rate.jsonl')
                 elif attack_task:
                     traffic=asyncio.create_task(self.real(rid,plan,cfg,groups,before_start=before_start,**real_kwargs) if before_start else self.real(rid,plan,cfg,groups,**real_kwargs))
                     try:
@@ -347,6 +424,10 @@ class Manager:
                     finally:
                         if not attack_task.done():attack_task.cancel()
                         await asyncio.gather(attack_task,return_exceptions=True)
+                        if rate_monitor_task:
+                            rate_monitor_task.cancel()
+                            await asyncio.gather(rate_monitor_task,return_exceptions=True)
+                        if rate_monitor:rate_monitor.save(self.folder(rid)/'attacker_rate.jsonl')
                 else:
                     if before_start:await self.real(rid,plan,cfg,groups,before_start=before_start)
                     else:await self.real(rid,plan,cfg,groups)
@@ -609,8 +690,46 @@ class Manager:
         since=time.time()
         audit_evidence=await self.verify_detection_mode_in_audit(since,mode)
         self.runs[rid]['detection_mode_verification']=dict(requested=mode,log_evidence=log_evidence,audit_cycle_evidence=audit_evidence)
+        # D7, change 4 (option B) + change 5: only when THIS call actually
+        # restarted -- a skipped restart changes nothing about the
+        # controller's forwarding state, so there is nothing new to settle
+        # or re-check (the previous restart's own check already covered
+        # it). last_controller_restart_at is Manager-lifetime state (not
+        # per-run), so later runs that skip their own restart still see a
+        # growing, truthful seconds_since_restart via the same field below.
+        if log_evidence.get('controller_restarted'):
+            self.last_controller_restart_at=since
+            forwarding_state=await self.verify_clean_forwarding_state(rid,since)
+            self.runs[rid]['detection_mode_verification']['post_restart_forwarding_state']=forwarding_state
+        self.runs[rid]['seconds_since_restart']=(time.time()-self.last_controller_restart_at) if self.last_controller_restart_at is not None else None
         await self.persist_async(rid)
         self.log(rid,f'Detection mode verified via STARTUP log and LAB_AUDIT cycle snapshot: {mode}')
+
+    async def verify_clean_forwarding_state(self,rid,since):
+        """D7, change 4 (option B): after a confirmed restart, wait a fixed
+        settle time, then require the controller's own next LAB_AUDIT
+        cycle to report no active_blocks for any domain -- the exact
+        leftover-state mechanism docs/PILOT_DIAGNOSIS.md §6 found live (a
+        block from the PREVIOUS run's mitigation, still draining through
+        its own release delay -- e.g. BROADBAND_RELEASE_QUIET_S -- visible
+        in a run's first cycles well before that run's own attack could
+        have caused one). Raises, same posture as the residual-OpenFlow-
+        rule check BaselineGuard.enter() already does for C2: never lets a
+        run start on top of state it cannot confirm is clear, for I or M."""
+        if self.audit is None or not getattr(self.audit,'enabled',False):
+            raise RuntimeError('post-restart forwarding-state verification requires the LAB_AUDIT collector (detection_audit.enabled) to be running')
+        await asyncio.sleep(self.post_restart_settle_s)
+        settled=since+self.post_restart_settle_s
+        deadline=time.monotonic()+self.post_restart_check_timeout_s
+        while time.monotonic()<deadline:
+            cycle=next((x for x in self.audit.rows(since,time.time()+1) if x.get('kind')=='cycle' and x.get('timestamp',0)>=settled),None)
+            if cycle is not None:
+                residual={k:v for k,v in cycle.get('active_blocks',{}).items() if v>0}
+                if residual:
+                    raise RuntimeError(f'Residual active_blocks after the post-restart settle wait: {residual!r}; run cannot start on top of unconfirmed mitigation state')
+                return dict(event_id=cycle.get('event_id'),timestamp=cycle.get('timestamp'),active_blocks=cycle.get('active_blocks',{}),settle_s=self.post_restart_settle_s)
+            await asyncio.sleep(1)
+        raise RuntimeError('No LAB_AUDIT cycle record observed after the post-restart settle wait within the timeout')
 
     async def verify_detection_mode_in_audit(self,since,mode,timeout=60):
         """Second evidence: DETECTION_CROSS_DOMAIN_CORRELATION in the
