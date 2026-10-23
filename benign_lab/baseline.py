@@ -97,37 +97,6 @@ if missing:
             self.cfg['nodes'][name]['session_id']=session_ids[address]
         return dict(sessions=sessions,mapping={name:dict(source_ip=self.cfg['nodes'][name]['source_ip'],session_id=self.cfg['nodes'][name]['session_id'],namespace=self.cfg['nodes'][name].get('namespace',''),interface=self.cfg['nodes'][name]['interface']) for name in mapping})
 
-    async def clear_residual_openflow_drops(self):
-        """Verify dataplane restrictions on `pe`, actively clearing any
-        identified as this harness's own leftover attack-mitigation rules
-        (the same priority=100/actions=drop shape the controller's own
-        enterprise mitigation always installs) rather than only detecting
-        them. Returns the count found (0 if none).
-
-        Confirmed live (2026-10-22): a controller RESTART resets its own
-        in-memory active_blocks to {} -- trivially "clear" -- without ever
-        deleting flows a PREVIOUS controller process installed, so a rule
-        from a run whose own attack-process cleanup also failed (see
-        attack_runner.py's own sweep) can outlive both the attack AND a
-        controller restart. This only ever deletes a drop rule matching
-        that exact shape -- never a broader `del-flows br-ent` -- so a
-        real, currently-intended mitigation from something other than
-        this harness's own attack traffic is not what this clears. Raises
-        if a rule survives its own deletion attempt (never silently
-        proceeds on dataplane state it could not actually confirm clean)."""
-        flows=await self.ssh(self.control['pe_host'],'root','ovs-ofctl -O OpenFlow13 dump-flows br-ent')
-        residual=[line for line in flows.splitlines() if 'priority=100' in line and 'actions=drop' in line]
-        for line in residual:
-            head=line.split(' actions=')[0]
-            fields=','.join(tok.strip() for tok in head.split(',')
-                             if tok.strip() and tok.strip().split('=')[0] not in ('cookie','duration','n_packets','n_bytes','priority'))
-            await self.ssh(self.control['pe_host'],'root','ovs-ofctl -O OpenFlow13 del-flows br-ent '+shlex.quote(fields))
-        if residual:
-            flows=await self.ssh(self.control['pe_host'],'root','ovs-ofctl -O OpenFlow13 dump-flows br-ent')
-            still=[line for line in flows.splitlines() if 'priority=100' in line and 'actions=drop' in line]
-            if still:raise RuntimeError('Residual OpenFlow drop rules could not be cleared; baseline cannot start until identified restrictions are released')
-        return len(residual)
-
     async def enter(self):
         flags=await self.ssh(self.control['host'],self.control['user'],'systemctl show ryu-manager -p Environment')
         if 'LAB_CALIBRATION_MODE=true' in flags:raise RuntimeError('An external calibration session is active')
@@ -164,13 +133,16 @@ print(json.dumps(v))
             code=source+'\nparams='+repr(params)+'\nresult=restore_mobile_budgets(**params)\nprint(json.dumps(result))\n'
             mobile=json.loads(await self.controller(code,timeout=75))
             mobile['preflight_source_sha256']=hashlib.sha256(source.encode()).hexdigest()
-        openflow_residual_drops=await self.clear_residual_openflow_drops()
+        # Verify dataplane restrictions without deleting unidentified rules.
+        flows=await self.ssh(self.control['pe_host'],'root','ovs-ofctl -O OpenFlow13 dump-flows br-ent')
+        residual=[line for line in flows.splitlines() if 'priority=100' in line and 'actions=drop' in line]
+        if residual:raise RuntimeError('Residual OpenFlow drop rules; baseline cannot start until identified restrictions are released')
         sessions=None
         if 'fixed' in self.domains:
             sessions=(await self.prepare_fixed(reconnect=True))['sessions']
         state=await self.status()
         if not state.get('active') or state.get('run_id')!=self.run_id:raise RuntimeError('Baseline lease expired during preparation')
-        return dict(lease=lease,controller=state,mobile=mobile,openflow_residual_drops=openflow_residual_drops,fixed_sessions=sessions)
+        return dict(lease=lease,controller=state,mobile=mobile,openflow_residual_drops=0,fixed_sessions=sessions)
 
     async def monitor(self):
         while True:

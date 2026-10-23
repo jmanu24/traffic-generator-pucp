@@ -28,8 +28,6 @@ from .host_monitor import HostMonitor
 from .vm_resources import VmResourceMonitor
 from .detection_audit import DetectionAuditMonitor
 from .detection_evaluation import evaluate as evaluate_detection, calibration as replay_calibration
-from . import response_metrics
-from . import attacker_rate_monitor
 from .threshold_control import ThresholdControl
 from .scenario_series import scenario_steps
 from .experiment_jobs import ExperimentJobs
@@ -201,41 +199,6 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
         (folder/'detection_windows.csv').write_text(csv_text(value['windows']))
         (folder/'threshold_snapshot.json').write_text(json.dumps(dict(policies=value['threshold_snapshots'],weights=value['decision_weights']),indent=2))
         (folder/'fixed_ip_changes.json').write_text(json.dumps(value['ip_changes'],indent=2))
-        return value
-    def rate_series_for(rid):
-        """D7 §2: rebuilds {domain: [(ts,pps),...]} from attacker_rate.jsonl
-        (AttackerRateMonitor's own persisted samples, written by runner.py's
-        execute() while an attack_plan was active) + the SAME attack_plan
-        and lab config that produced it -- never from anything the
-        detector reported. {} (not an error) for any run that has no
-        attacker_rate.jsonl at all (B0-only runs, or runs predating this
-        collector) -- compute()'s own censoring handles that the same as
-        an empty rate_series it was explicitly given."""
-        folder=manager.folder(rid)
-        samples_path=folder/'attacker_rate.jsonl'
-        attack_plan_path=folder/'attack_plan.json'
-        if not samples_path.exists() or not attack_plan_path.exists():
-            return {}
-        try:
-            attack_plan=json.loads(attack_plan_path.read_text())
-            cfg=json.loads((folder/'lab_snapshot.json').read_text())
-            samples=[json.loads(line) for line in samples_path.read_text().splitlines() if line.strip()]
-        except (OSError,ValueError):
-            return {}
-        return attacker_rate_monitor.rate_series_from_samples(samples,attacker_rate_monitor.domain_sources(attack_plan,cfg))
-    def response_metrics_for(rid):
-        """D7: response_metrics.py's A/tD/tO/tE/etc, persisted the same way
-        evaluation_for() persists detection_evaluation.json above -- so
-        export() (below) picks it up for free through its own generic
-        'any .json/.jsonl/.csv already in the folder' loop, with no
-        special-casing there."""
-        plan,run,records,_interfaces,event_states=evaluation_dataset(rid)
-        try:
-            value=response_metrics.compute(plan,run,records,event_states=event_states,rate_series=rate_series_for(rid))
-        except (FileNotFoundError,KeyError,ValueError,ZeroDivisionError):
-            value=dict(available=False)
-        folder=manager.folder(rid)
-        tmp=folder/'response_metrics.tmp';tmp.write_text(json.dumps(value,indent=2));tmp.replace(folder/'response_metrics.json')
         return value
     control_lock=None
     def control_change_lock():
@@ -600,7 +563,6 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
         benchmark_export=run_for(rid).get('purpose')=='domain_benchmark'
         def build_zip():
             evaluation_for(rid)
-            response_metrics_for(rid)
             buffer=io.BytesIO()
             with zipfile.ZipFile(buffer,'w',zipfile.ZIP_DEFLATED) as z:
                 for f in manager.folder(rid).iterdir():

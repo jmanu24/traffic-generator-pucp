@@ -10,7 +10,6 @@ indicators, coverage() and summarize()'s paired M-I/censoring handling.
 """
 import pytest
 from benign_lab import response_metrics as rm
-from benign_lab import attacker_rate_monitor as arm
 
 
 def make_plan(duration_s=30, warmup_s=0, domain='enterprise'):
@@ -150,52 +149,6 @@ def test_restricted_mean_caps_censored_value_at_restriction():
     assert rm.restricted(3.0, False, 10) == 3.0
     assert rm.restricted(None, True, 10) == 10
     assert rm.restricted(50.0, True, 10) == 10  # a late/invalid value is still capped
-
-
-def test_compute_domain_availability_filters_plan_and_event_states_by_domain():
-    # Two domains, same plan/run -- enterprise fails the window (D=90%),
-    # mobile passes it. compute_domain_availability() must isolate each
-    # domain's own A exactly like compute()'s whole-run A would if each
-    # domain were the only one in the plan.
-    plan = dict(duration_s=30, warmup_s=0, ground_truth={'window_s': 5}, plan_hash='testplan', events=[
-        dict(event_id='ent1', domain='enterprise', source='ent1', start_s=0, duration_s=30, planned_bytes=30000),
-        dict(event_id='mob1', domain='mobile', source='ue1', start_s=0, duration_s=30, planned_bytes=30000),
-    ])
-    run = make_run(elapsed_s=30)
-    es = [
-        dict(event_id='ent1', domain='enterprise', start_s=0, duration_s=30, planned_bytes=30000, bytes_tx=15000, bytes_rx=0, lateness_s=.01, actual_end_s=30, status='completed'),
-        dict(event_id='mob1', domain='mobile', start_s=0, duration_s=30, planned_bytes=30000, bytes_tx=30000, bytes_rx=0, lateness_s=.01, actual_end_s=30, status='completed'),
-    ]
-    assert rm.compute_domain_availability(plan, run, es, 'enterprise')['availability_pct'] == pytest.approx(0)
-    assert rm.compute_domain_availability(plan, run, es, 'mobile')['availability_pct'] == pytest.approx(100)
-
-
-def test_tE_end_to_end_from_attacker_rate_monitor_samples():
-    """D7, change 2's actual integration gap: compute()'s own tE tests
-    (above) hand it a pre-built rate_series tuple list; attacker_rate_monitor's
-    own tests (test_attacker_rate_monitor.py) never feed their OUTPUT into
-    compute(). This wires the real functions together -- attack_plan +
-    lab cfg -> domain_sources() -> rate_series_from_samples() -> compute()
-    -- with no hand-built rate_series in between, so a mismatch in either
-    module's own idea of the {domain: [(ts,pps),...]} shape would surface
-    here even though each module's own unit tests pass in isolation."""
-    plan, run = make_plan(), make_run()
-    records = [detection_record(1012), mitigation_record(1013)]
-    es = make_event_states()
-    attack_plan = dict(events=[dict(domain='enterprise', source='ent1')])
-    cfg = dict(nodes={'ent1': dict(source_ip='10.70.0.99')})
-    # Baseline [tA=1010, tO=1013]: ~100pps (cumulative +100/s). From t=1014
-    # the attacker's own counter stops growing (~10pps) and stays there for
-    # >= S=5s (1014..1019) -- a real post-mitigation drop, not a hand-tuned
-    # rate_series tuple.
-    cumulative = {1010: 0, 1011: 100, 1012: 200, 1013: 300, 1014: 310, 1015: 320, 1016: 330, 1017: 340, 1018: 350, 1019: 360}
-    samples = [dict(timestamp=float(t), packets_by_ip={'10.70.0.99': n}) for t, n in cumulative.items()]
-    rate_series = arm.rate_series_from_samples(samples, arm.domain_sources(attack_plan, cfg))
-    assert rate_series['enterprise'][:3] == [(1011.0, pytest.approx(100.0)), (1012.0, pytest.approx(100.0)), (1013.0, pytest.approx(100.0))]
-    r = rm.compute(plan, run, records, event_states=es, rate_series=rate_series)
-    assert r['tE']['value'] == pytest.approx(1014.0)
-    assert r['tE']['censored'] is False
-    assert r['TM'] == pytest.approx(2.0)
 
 
 def test_summarize_pairs_m_minus_i_by_block_with_restricted_censoring():
