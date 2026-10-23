@@ -61,6 +61,42 @@ def iter_cycle_groups(records):
                     yield ts, domains, dst, proto, rate['trigger_pps']
 
 
+def iter_dist_pps_groups(records):
+    """records: a run's own LAB_AUDIT kind=cycle records. Yields (ts,
+    domains_tuple, dst_ip, dist_pps_all_protocols) for every correlation
+    group of every cycle that has observed_rates AND the
+    dist_pps_all_protocols field (THRESHOLD_CALIBRATION_V2 Paso 3 --
+    orchestrator-ddos-pucp's detection/engine.py::observed_benign_rates()
+    instrumentation; older captures predate it and are silently skipped,
+    same policy as iter_cycle_groups for missing observed_rates)."""
+    for rec in records:
+        if rec.get('kind') != 'cycle' or not rec.get('observed_rates'):
+            continue
+        ts = rec['timestamp']
+        for group in rec['observed_rates']:
+            if 'dist_pps_all_protocols' not in group:
+                continue
+            domains = tuple(sorted(group.get('domains', [])))
+            dst = group.get('dst_ip')
+            yield ts, domains, dst, group['dist_pps_all_protocols']
+
+
+def propose_dist_pps_threshold(groups, q=0.999, margin=1.5):
+    """groups: iterable of (ts, domains, dst, dist_pps_all_protocols), e.g.
+    itertools.chain(*(iter_dist_pps_groups(r) for r in training_runs)).
+    Same quantile*margin recipe as propose_thresholds(), for
+    DIST_PPS_THRESHOLD -- the protocol-agnostic aggregate
+    _classify_distributed() compares against (see that function and
+    observed_benign_rates()'s own docstrings in orchestrator-ddos-pucp).
+    Returns None if there are zero samples, never a fabricated value."""
+    values = [rate for _, _, _, rate in groups]
+    if not values:
+        return None
+    qv = quantile(values, q)
+    return dict(n=len(values), quantile=qv, quantile_q=q, margin=margin,
+                proposed_threshold=round(qv * margin, 3))
+
+
 def propose_thresholds(groups, q=0.999, margin=1.5):
     """groups: iterable of (ts, domains, dst, protocol, trigger_pps),
     e.g. itertools.chain(*(iter_cycle_groups(r) for r in training_runs)).
@@ -134,6 +170,29 @@ def replay_activation(groups, thresholds, activation_params):
         if len(series) >= min_hits:
             accepted.append((ts, domains, dst, proto))
     return accepted
+
+
+def replay_dist_pps_backup(groups, dist_pps_threshold):
+    """groups: iterable of (ts, domains, dst, dist_pps_all_protocols), e.g.
+    from iter_dist_pps_groups(). Replays ONLY the pps gate of
+    _classify_distributed()'s backup criterion (DIST_PPS_THRESHOLD):
+    `total_pps < pps_threshold: return None`, i.e. the opposite --
+    accepts a cycle when total_pps >= dist_pps_threshold.
+
+    DECLARED SIMPLIFICATION (Paso 4): the real engine also gates on
+    DIST_MIN_SOURCES (distinct source IPs) and DIST_ENTROPY_THRESHOLD
+    (Shannon entropy of their pps distribution) -- neither is replayable
+    from observed_rates/dist_pps_all_protocols, which only carries the
+    group's AGGREGATE pps, not its per-source breakdown. This replay is
+    therefore an upper bound on how often the real backup criterion could
+    fire (the pps gate is necessary but not sufficient for a real engine
+    detection) -- useful to confirm the pps gate alone no longer blocks
+    benign traffic routinely (see the DIST_PPS_THRESHOLD=300 bug this
+    recalibration fixes), not a byte-exact replay of the full criterion.
+
+    Returns a list of (ts, domains, dst, 'DIST_PPS') accepted entries, in
+    the same 4-tuple shape fpr_from_replay() expects."""
+    return [(ts, domains, dst, 'DIST_PPS') for ts, domains, dst, rate in groups if rate >= dist_pps_threshold]
 
 
 def activation_params_from_snapshot(thresholds_values):
