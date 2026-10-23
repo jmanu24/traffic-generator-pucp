@@ -23,6 +23,36 @@ def test_iter_cycle_groups_skips_cycles_without_observed_rates():
     assert rows == [(102, ('enterprise',), '10.55.0.100', 'UDP', 12.0)]
 
 
+def test_iter_dist_pps_groups_skips_cycles_and_groups_without_the_field():
+    records = [
+        dict(kind='cycle', timestamp=100, observed_rates=None),
+        dict(kind='detection', timestamp=101),
+        # observed_rates present but predates the instrumentation --
+        # group has no dist_pps_all_protocols key at all.
+        dict(kind='cycle', timestamp=102, observed_rates=[
+            dict(domains=['enterprise'], dst_ip='10.55.0.100',
+                 protocols={'UDP': dict(trigger_pps=12.0)})]),
+        dict(kind='cycle', timestamp=103, observed_rates=[
+            dict(domains=['enterprise'], dst_ip='10.55.0.100',
+                 protocols={'UDP': dict(trigger_pps=12.0)},
+                 dist_pps_all_protocols=40.0)]),
+    ]
+    rows = list(tr.iter_dist_pps_groups(records))
+    assert rows == [(103, ('enterprise',), '10.55.0.100', 40.0)]
+
+
+def test_propose_dist_pps_threshold_quantile_times_margin():
+    groups = [(0, ('enterprise',), 'd', float(v)) for v in range(1, 101)]  # 1..100
+    out = tr.propose_dist_pps_threshold(groups, q=0.99, margin=1.5)
+    assert out['n'] == 100
+    assert out['quantile'] == pytest.approx(99.01, abs=.1)
+    assert out['proposed_threshold'] == pytest.approx(99.01 * 1.5, abs=.2)
+
+
+def test_propose_dist_pps_threshold_returns_none_for_zero_samples():
+    assert tr.propose_dist_pps_threshold([], q=0.999, margin=1.5) is None
+
+
 def test_propose_thresholds_quantile_times_margin():
     groups = [(0, ('enterprise',), 'd', 'UDP', v) for v in range(1, 101)]  # 1..100
     out = tr.propose_thresholds(groups, q=0.99, margin=1.5)
@@ -30,6 +60,17 @@ def test_propose_thresholds_quantile_times_margin():
     assert out['UDP']['quantile'] == pytest.approx(99.01, abs=.1)
     assert out['UDP']['proposed_threshold'] == pytest.approx(99.01 * 1.5, abs=.2)
     assert 'TCP_SYN' not in out  # no samples -> omitted, not fabricated
+
+
+def test_replay_dist_pps_backup_accepts_only_cycles_at_or_above_threshold():
+    groups = [
+        (0.0, ('enterprise', 'fixed'), 'd', 299.0),
+        (1.0, ('enterprise', 'fixed'), 'd', 300.0),
+        (2.0, ('enterprise', 'fixed'), 'd', 301.0),
+    ]
+    accepted = tr.replay_dist_pps_backup(groups, dist_pps_threshold=300.0)
+    assert [a[0] for a in accepted] == [1.0, 2.0]
+    assert accepted[0] == (1.0, ('enterprise', 'fixed'), 'd', 'DIST_PPS')
 
 
 def test_single_domain_hit_requires_activation_hysteresis():
