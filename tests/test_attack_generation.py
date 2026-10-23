@@ -1,9 +1,14 @@
-"""Attack generation: real flows from real clients, no hping3, no receiver cooperation."""
+"""Attack generation: real flows from real clients, no receiver cooperation.
+
+syn_flood is the one exception to "no hping3" -- see attack_flood()'s own
+docstring and docs/PROTECTED_RESOURCE.md §5/§9 (isp-ddos-ryu) for why a
+pure-Python connect() can never produce a real half-open flood here."""
 import asyncio
 import socket
 import time
+from unittest import mock
 import pytest
-from benign_lab.agent import attack_flood, _icmp_checksum, _icmp_echo_packet
+from benign_lab.agent import attack_flood, SYN_FLOOD_SPORT_BASE, _icmp_checksum, _icmp_echo_packet
 from benign_lab.attack_planner import generate_attack_plan, validate_attack_plan
 from benign_lab.attack_runner import run_attack
 
@@ -71,6 +76,133 @@ def test_attack_flood_udp_reaches_a_real_socket_at_the_target_rate():
             pass
         assert received == 200
     asyncio.run(scenario())
+
+
+class _FakeProc:
+    def __init__(self, returncode=0, stderr=b'', communicate_raises=None):
+        self.returncode = returncode
+        self._stderr = stderr
+        self._communicate_raises = communicate_raises
+        self.killed = False
+        self.waited = False
+
+    async def communicate(self, *a, **k):
+        if self._communicate_raises:
+            raise self._communicate_raises
+        return b'', self._stderr
+
+    def kill(self):
+        self.killed = True
+
+    async def wait(self):
+        self.waited = True
+
+
+def test_attack_flood_syn_flood_runs_hping3_inside_a_scoped_nft_rule():
+    """syn_flood shells out to nft (scoped rule) + hping3 + nft cleanup, in
+    that order, and never touches a plain Python socket -- see the branch's
+    own comment in agent.py for why a connect()-based flood can't work."""
+    calls = []
+
+    async def fake_exec(*args, **kwargs):
+        calls.append(args)
+        if args[2] == 'nft' and args[3] == 'delete':
+            return _FakeProc(returncode=0)
+        if args[2] == 'nft':
+            return _FakeProc(returncode=0)
+        if args[2] == 'pkill':
+            return _FakeProc(returncode=0)
+        assert args[2] == 'hping3'
+        return _FakeProc(returncode=0)
+
+    async def scenario():
+        metrics = {'bytes_tx': 0}
+        deadline = time.monotonic() + 2.0
+        with mock.patch('asyncio.create_subprocess_exec', side_effect=fake_exec):
+            await attack_flood(dict(wire_protocol='syn_flood', rate_pps=50, packet_size_bytes=64),
+                                dict(host='10.55.0.100', tcp_port=9001), metrics, deadline, {})
+        return metrics
+    metrics = asyncio.run(scenario())
+
+    # D7: nft_setup, hping, THEN a pkill reap of any surviving hping3 child
+    # (hping.kill()'s SIGKILL only reaches the sudo wrapper, never the
+    # hping3 grandchild it pty-forks -- confirmed live 2026-10-22), finally
+    # the nft cleanup -- the reap runs before the nft table is torn down.
+    assert len(calls) == 4
+    nft_setup, hping, pkill, nft_cleanup = calls
+    assert nft_setup[:3] == ('sudo', '-n', 'nft')
+    assert nft_cleanup[:5] == ('sudo', '-n', 'nft', 'delete', 'table')
+    assert hping[:3] == ('sudo', '-n', 'hping3')
+    assert '-s' in hping and hping[hping.index('-s') + 1] == str(SYN_FLOOD_SPORT_BASE)
+    assert '-p' in hping and hping[hping.index('-p') + 1] == '9001'
+    assert hping[-1] == '10.55.0.100'
+    assert pkill[:5] == ('sudo', '-n', 'pkill', '-9', '-f')
+    assert pkill[5] == f'hping3 --syn -p 9001 -s {SYN_FLOOD_SPORT_BASE}'
+    assert metrics['packets_sent'] == pytest.approx(100, abs=5)  # ~2s x 50pps
+    assert metrics['bytes_tx'] == metrics['packets_sent'] * 64
+    assert metrics['attack_pps_target'] == 50
+
+
+def test_attack_flood_syn_flood_cleans_up_nft_even_when_hping3_fails_at_startup():
+    """A startup-time failure (bad sudo rule, missing binary) raises -- but
+    the nft cleanup still runs (finally), never leaving a stray table."""
+    calls = []
+
+    async def fake_exec(*args, **kwargs):
+        calls.append(args)
+        if args[2] in ('nft', 'pkill'):
+            return _FakeProc(returncode=0)
+        return _FakeProc(returncode=1, stderr=b'sudo: a password is required')
+
+    async def scenario():
+        metrics = {'bytes_tx': 0}
+        deadline = time.monotonic() + 5.0
+        with mock.patch('asyncio.create_subprocess_exec', side_effect=fake_exec):
+            await attack_flood(dict(wire_protocol='syn_flood', rate_pps=50, packet_size_bytes=64),
+                                dict(host='10.55.0.100', tcp_port=9001), metrics, deadline, {})
+    with pytest.raises(RuntimeError, match='hping3 failed'):
+        asyncio.run(scenario())
+    # The pkill reap still runs even on a fast startup failure -- finally
+    # covers every exit path, not just the normal/deadline one.
+    assert [c[2] for c in calls] == ['nft', 'hping3', 'pkill', 'nft']
+    assert calls[-1][3] == 'delete'
+
+
+def test_attack_flood_syn_flood_treats_the_deadline_kill_as_success_not_failure():
+    """hping3 has no native "stop after N seconds" flag independent of -c --
+    the normal end-of-event path is this code's own timeout killing a still-
+    running process, which must NOT be reported as an error."""
+    killed_proc = _FakeProc(returncode=None)
+    pkill_calls = []
+
+    async def fake_exec(*args, **kwargs):
+        if args[2] == 'nft':
+            return _FakeProc(returncode=0)
+        if args[2] == 'pkill':
+            pkill_calls.append(args)
+            return _FakeProc(returncode=0)
+        return killed_proc
+
+    async def scenario():
+        metrics = {'bytes_tx': 0}
+        deadline = time.monotonic() + 0.3
+        async def fake_wait_for(coro, timeout):
+            coro.close()  # avoid a "coroutine was never awaited" warning
+            raise asyncio.TimeoutError
+
+        with mock.patch('asyncio.create_subprocess_exec', side_effect=fake_exec), \
+             mock.patch('asyncio.wait_for', side_effect=fake_wait_for):
+            await attack_flood(dict(wire_protocol='syn_flood', rate_pps=50, packet_size_bytes=64),
+                                dict(host='10.55.0.100', tcp_port=9001), metrics, deadline, {})
+        return metrics
+    metrics = asyncio.run(scenario())
+    assert killed_proc.killed and killed_proc.waited
+    assert metrics['packets_sent'] > 0
+    # The reap pkill still runs after the deadline-kill path, same as any
+    # other exit from the try block -- it is in `finally`, not tied to a
+    # particular outcome.
+    assert len(pkill_calls) == 1
+    assert pkill_calls[0][:5] == ('sudo', '-n', 'pkill', '-9', '-f')
 
 
 def test_run_attack_reports_resolved_source_ips():

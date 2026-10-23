@@ -61,6 +61,55 @@ def test_recovery_marks_pending_events_interrupted(tmp_path):
     assert m.events['recover']['a']['status']=='interrupted'
 
 
+def test_covariates_recorded_at_start(tmp_path):
+    """D7, change 5: sequence_position, panel_process_memory_kb_at_start
+    and seconds_since_restart are set for EVERY run, not just lab/enabled
+    ones apply_detection_mode() touches -- a simulation-mode run here is
+    enough to check start()'s own part of it (seconds_since_restart's
+    apply_detection_mode-side update is covered in test_im_integration.py)."""
+    async def scenario():
+        cfg=load_lab(ROOT/'config/lab.demo.yaml')
+        p=generate(load_profiles(ROOT/'profiles'),1,5)
+        path=save_plan(p,tmp_path/'plan.json')
+        m=Manager(tmp_path/'runs')
+        assert m.last_controller_restart_at is None
+        first=await m.start(p,path,cfg,mode='simulation',speed=100)
+        assert first['sequence_position']==0
+        assert first['seconds_since_restart'] is None  # no restart observed this process lifetime
+        assert isinstance(first['panel_process_memory_kb_at_start'],int) and first['panel_process_memory_kb_at_start']>0
+        await asyncio.wait_for(m.tasks[first['id']],15)
+        p2=generate(load_profiles(ROOT/'profiles'),2,5)
+        path2=save_plan(p2,tmp_path/'plan2.json')
+        second=await m.start(p2,path2,cfg,mode='simulation',speed=100)
+        assert second['sequence_position']==1
+        await asyncio.wait_for(m.tasks[second['id']],15)
+        await m.shutdown()
+    asyncio.run(scenario())
+
+
+def test_sequence_position_continues_across_a_manager_restart(tmp_path):
+    """sequence_position must be this Manager's own ordinal among every
+    run it has ever started, INCLUDING ones loaded from disk at __init__
+    -- a real orchestrator restart must not reset it back to 0."""
+    folder=tmp_path/'old'
+    folder.mkdir()
+    p=generate(load_profiles(ROOT/'profiles'),1,5)
+    save_plan(p,folder/'benign_plan.json')
+    (folder/'run.json').write_text(json.dumps(dict(id='old',status='completed',elapsed_s=5,attack_windows=[],observed_attacks=[])))
+    (folder/'event_states.json').write_text(json.dumps({}))
+    async def scenario():
+        cfg=load_lab(ROOT/'config/lab.demo.yaml')
+        m=Manager(tmp_path)  # reconstructs from the 1 run already on disk
+        assert len(m.runs)==1
+        p2=generate(load_profiles(ROOT/'profiles'),2,5)
+        path2=save_plan(p2,tmp_path/'plan2.json')
+        new=await m.start(p2,path2,cfg,mode='simulation',speed=100)
+        assert new['sequence_position']==1  # continues from the loaded run, not reset to 0
+        await asyncio.wait_for(m.tasks[new['id']],15)
+        await m.shutdown()
+    asyncio.run(scenario())
+
+
 def test_csv_union_of_protocol_specific_fields():
     from benign_lab.runner import csv_text
     import csv,io
