@@ -189,7 +189,7 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
             path=folder/name
             return [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
         r['_lab']=json.loads((folder/'lab_snapshot.json').read_text()) if (folder/'lab_snapshot.json').exists() else {}
-        return (read_plan(r['plan_hash']),r,read_lines('detection_events.jsonl'),read_lines('interface_metrics.jsonl'),[dict(e) for e in manager.events.get(rid,{}).values()])
+        return (read_plan(r['plan_hash']),r,read_lines('detection_events.jsonl'),read_lines('interface_metrics.jsonl'),[dict(e) for e in manager.events_for(rid).values()])
     def evaluation_for(rid):
         try:value=evaluate_detection(*evaluation_dataset(rid))
         except (FileNotFoundError,KeyError):value=dict(schema=1,available=False,domains=[],windows=[],ip_changes=[],impact=[],threshold_snapshots=[],decision_weights=None,limitations=['Historical export lacks complete plan or evidence; no FP/TN inferred'])
@@ -541,7 +541,7 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
     @app.get('/api/runs/{rid}/events')
     async def events(rid:str,domain:str='',status:str='',offset:int=0,limit:int=100):
         run_for(rid)
-        es=[e for e in manager.events[rid].values() if (not domain or e['domain']==domain) and (not status or e['status']==status)]
+        es=[e for e in manager.events_for(rid).values() if (not domain or e['domain']==domain) and (not status or e['status']==status)]
         offset=max(0,offset)
         return dict(total=len(es),items=es[offset:offset+max(1,min(limit,500))])
     @app.get('/api/runs/{rid}/ground-truth')
