@@ -58,7 +58,71 @@ def test_recovery_marks_pending_events_interrupted(tmp_path):
     (folder/'event_states.json').write_text(json.dumps({'a':dict(event_id='a',status='running')}))
     m=Manager(tmp_path)
     assert m.runs['recover']['status']=='interrupted'
+    # A run recovered THIS way (interrupted mid-flight, possibly partial/
+    # synthetic event data -- see evict_events()'s own comment on why it
+    # is skipped here) must still be held fully in memory, same as
+    # before eviction existed.
     assert m.events['recover']['a']['status']=='interrupted'
+
+
+def test_startup_evicts_a_run_that_was_already_terminal_on_disk(tmp_path):
+    """PILOT_RESULT.md section 1 (D7/PILOT2, 2026-10-23): a run already
+    TERMINAL in its own run.json before this restart has complete,
+    well-formed event data -- __init__ evicts it (unlike the recovered-
+    mid-flight run above), and snapshot() must still report the exact
+    same derived numbers afterward, from the cached summary alone."""
+    folder=tmp_path/'already-done'
+    folder.mkdir()
+    (folder/'run.json').write_text(json.dumps(dict(id='already-done',status='failed',finished_at=1,elapsed_s=5,duration_s=5)))
+    (folder/'event_states.json').write_text(json.dumps({'e':dict(domain='fixed',status='failed',rate_bps=8,bytes_tx=3,bytes_rx=4)}))
+    m=Manager(tmp_path)
+    assert m.events['already-done']=={}
+    assert m.snapshot('already-done')['counts']=={'failed':1}
+    assert m.snapshot('already-done')['bytes_tx']==3 and m.snapshot('already-done')['bytes_rx']==4
+
+
+def test_events_for_reads_an_evicted_terminal_runs_events_from_disk(tmp_path):
+    m=Manager(tmp_path);rid='evicted'
+    m.runs[rid]=dict(id=rid,status='failed',finished_at=1,elapsed_s=5,duration_s=5)
+    e=dict(domain='fixed',status='failed',rate_bps=8,bytes_tx=0,bytes_rx=0)
+    m.events[rid]={'e':e};m.logs[rid]=[]
+    m.folder(rid).mkdir(parents=True)
+    m.evict_events(rid)
+    assert m.events[rid]=={}
+    # Nothing on disk yet (no checkpoint written) -- events_for() must
+    # fall back to {} rather than raise, same as a run with no events file.
+    assert m.events_for(rid)=={}
+    (m.folder(rid)/'event_states.json').write_text(json.dumps({'e':e}))
+    assert m.events_for(rid)=={'e':e}
+
+
+def test_evict_events_is_a_noop_for_a_run_still_in_progress(tmp_path):
+    m=Manager(tmp_path);rid='running'
+    m.runs[rid]=dict(id=rid,status='running',finished_at=None,elapsed_s=1,duration_s=5)
+    e=dict(domain='fixed',status='running',rate_bps=8,bytes_tx=0,bytes_rx=0)
+    m.events[rid]={'e':e};m.logs[rid]=[]
+    m.evict_events(rid)
+    assert m.events[rid]=={'e':e}
+
+
+def test_checkpoint_never_overwrites_an_evicted_terminal_runs_events_with_empty(tmp_path):
+    """The real risk evict_events() must never cause: /api/runs/{rid}/
+    export (or any other post-completion persist_async) re-persisting a
+    terminal run whose self.events[rid] is now {} must NOT clobber the
+    already-correct event_states.json on disk with that empty dict."""
+    from benign_lab.planner import generate,load_profiles,save_plan
+    m=Manager(tmp_path);rid='export-after-evict'
+    m.runs[rid]=dict(id=rid,status='failed',finished_at=1,elapsed_s=5,duration_s=5)
+    e=dict(domain='fixed',status='failed',rate_bps=8,bytes_tx=3,bytes_rx=4)
+    m.events[rid]={'e':e};m.logs[rid]=[]
+    m.folder(rid).mkdir(parents=True)
+    p=generate(load_profiles(ROOT/'profiles'),7,5)
+    save_plan(p,m.folder(rid)/'benign_plan.json')
+    m.write_checkpoint(m.checkpoint(rid))  # as if a normal persist already ran
+    m.evict_events(rid)
+    assert m.events[rid]=={}
+    m.write_checkpoint(m.checkpoint(rid))  # e.g. the export endpoint's persist_async
+    assert json.loads((m.folder(rid)/'event_states.json').read_text())=={'e':e}
 
 
 def test_csv_union_of_protocol_specific_fields():

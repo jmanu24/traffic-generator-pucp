@@ -75,8 +75,53 @@ class Manager:
                 for e in self.events[eid].values():
                     if e['status'] in ('pending','running'): e['status']='interrupted'
                 self.persist(eid)
+                # Deliberately NOT evicted here: a run recovered mid-flight
+                # this way can have partial/synthetic event data (e.g. a
+                # crash before every field was ever written), and
+                # evict_events()'s snapshot() call expects the full event
+                # shape. Leaving it in memory is the same (safe) behavior
+                # this had before eviction existed -- one recovered run's
+                # footprint is not the O(total history) problem below.
+            else:
+                # PILOT_RESULT.md section 1 (D7 pilot, confirmed live again
+                # 2026-10-23, PILOT2): keeping every historical run's full
+                # event_states in memory forever makes this __init__ loop
+                # -- and every request thereafter -- O(total runs ever
+                # recorded), not O(active runs). A run already terminal
+                # before this restart has complete, well-formed event
+                # data, so evict_events() (via snapshot()) can safely
+                # compute and cache its derived summaries once, then drop
+                # the raw per-event dict.
+                self.evict_events(eid)
 
     def folder(self, rid): return self.root/rid
+
+    def events_for(self,rid):
+        """Full per-event state for `rid`: from memory if this run is
+        still active (evict_events() only clears a TERMINAL run), else
+        read once from disk -- a terminal run's event_states.json never
+        changes again, so this is always consistent, just not cached
+        back into self.events (that would defeat evict_events() -- see
+        its own docstring for why total-history memory growth matters)."""
+        events=self.events.get(rid)
+        if events:return events
+        ep=self.folder(rid)/'event_states.json'
+        return json.loads(ep.read_text()) if ep.exists() else {}
+
+    def evict_events(self,rid):
+        """Drop a TERMINAL run's full event_states from memory, once
+        snapshot()'s own derived summaries (terminal_metrics/
+        payload_quality) are cached -- those are everything snapshot()
+        needs for a terminal run afterward, never self.events[rid]
+        itself. A no-op for a run that is not yet terminal (nothing to
+        evict: it's still being mutated live). checkpoint() (via
+        events_for()) and the few other terminal-run readers
+        (/api/runs/{rid}/events, evaluation_dataset) fall back to
+        reading event_states.json from disk on demand -- never silently
+        missing data, just not held in memory between requests."""
+        if self.runs[rid]['status'] not in TERMINAL:return
+        self.snapshot(rid)
+        self.events[rid]={}
 
     def elapsed(self,rid):
         r=self.runs[rid]
@@ -122,7 +167,11 @@ class Manager:
         self.runs[rid]['elapsed_s']=self.elapsed(rid)
         if rid not in self.plan_cache:
             self.plan_cache[rid]=json.loads((self.folder(rid)/'benign_plan.json').read_text())
-        return (self.folder(rid),copy.deepcopy(self.runs[rid]),copy.deepcopy(self.events[rid]),self.plan_cache[rid])
+        # events_for(), not self.events[rid] directly: a terminal run
+        # re-persisted after eviction (e.g. /api/runs/{rid}/export) must
+        # never have write_checkpoint() overwrite its already-correct
+        # event_states.json with the now-empty in-memory dict.
+        return (self.folder(rid),copy.deepcopy(self.runs[rid]),copy.deepcopy(self.events_for(rid)),self.plan_cache[rid])
 
     @staticmethod
     def write_checkpoint(snapshot):
@@ -384,6 +433,7 @@ class Manager:
             r['finished_at']=time.time()
             self.log(rid,f'Run {r["status"]}')
             await self.persist_async(rid)
+            self.evict_events(rid)
 
     async def simulate(self,rid,plan):
         r=self.runs[rid]

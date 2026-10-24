@@ -92,7 +92,7 @@ def test_supervisor_two_contexts_one_transport_and_complete_payload(tmp_path):
             assert result['execution_transport']['sessions']==1 and result['execution_transport']['workers']==2
             assert result['counts']=={'completed':16}
             assert result['bytes_tx']==9600 and result['bytes_rx']==9600
-            assert len({e['source_ip'] for e in manager.events[r['id']].values()})==2
+            assert len({e['source_ip'] for e in manager.events_for(r['id']).values()})==2
             assert sum(a['connections']['reused'] for a in result['agents'].values())>=8
             assert (manager.folder(r['id'])/'benign_plan.json').read_bytes()==path.read_bytes()
         finally:await manager.shutdown();server.close();await server.wait_closed()
