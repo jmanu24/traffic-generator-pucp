@@ -76,11 +76,17 @@ def call(token, method, path, body=None):
 
 
 def wait_for_completion(token, rid, timeout=600):
+    # PILOT2b finding (2026-10-24): GET /api/runs lists EVERY historical
+    # run (450+ by now) on every poll -- with this repo's run history,
+    # that took ~19s per call even after caching snapshot()'s own
+    # per-run work (runner.py's PILOT2b comment), risking the polling
+    # client itself timing out and starving the active run's event
+    # loop. GET /api/runs/{rid} is the single-run equivalent (O(1) via
+    # the same cached snapshot()) -- poll that instead.
     deadline = time.time() + timeout
     while time.time() < deadline:
-        rows = call(token, 'GET', '/api/runs')
-        match = next((r for r in rows if r['id'] == rid), None)
-        if match and match['status'] in ('completed', 'completed_with_errors', 'failed', 'stopped', 'interrupted'):
+        match = call(token, 'GET', f'/api/runs/{rid}')
+        if not match.get('error') and match.get('status') in ('completed', 'completed_with_errors', 'failed', 'stopped', 'interrupted'):
             return match
         time.sleep(5)
     raise TimeoutError(f'Run {rid} did not finish within {timeout}s')

@@ -144,8 +144,19 @@ class Manager:
             for domain in ('mobile','fixed','enterprise','peering'):
                 es=[e for e in self.events[rid].values() if e['domain']==domain]
                 r['domains'][domain]=dict(counts=dict(Counter(e['status'] for e in es)),bytes_tx=sum(e.get('bytes_tx',0) for e in es),bytes_rx=sum(e.get('bytes_rx',0) for e in es),active_planned_mbps=sum(e['rate_bps'] for e in es if e['status']=='running')/1e6)
+            # PILOT2b finding (2026-10-24): list_runs() used to stat()
+            # detection_events.jsonl for every run on every poll -- with
+            # hundreds of historical runs, that's hundreds of synchronous
+            # disk syscalls per call, blocking the whole event loop long
+            # enough to starve the active run's own deadline/agent-sync
+            # tasks ("Agents exceeded the experiment deadline" on otherwise
+            # healthy runs). A terminal run's audit file never changes
+            # again, so compute it once here and cache it like the other
+            # terminal metrics below, instead of re-stat'ing it forever.
+            path=self.folder(rid)/'detection_events.jsonl'
+            r['audit_available']=path.exists() and path.stat().st_size>0
             if r['status'] in TERMINAL and r.get('finished_at'):
-                self.terminal_metrics[rid]={k:copy.deepcopy(r[k]) for k in ('counts','bytes_tx','bytes_rx','shortfall_bytes','active_planned_mbps','domains')}
+                self.terminal_metrics[rid]={k:copy.deepcopy(r[k]) for k in ('counts','bytes_tx','bytes_rx','shortfall_bytes','active_planned_mbps','domains','audit_available')}
         if 'payload_quality' not in r:
             eligible=[e for e in self.events[rid].values() if e.get('wire_protocol') in ('tcp','http','udp') and e['status'] not in ('pending','running')]
             r['payload_quality']=dict(eligible=len(eligible),full_local=sum(e.get('bytes_tx',0)+e.get('bytes_rx',0)>=e['planned_bytes'] for e in eligible),partial=sum(0<e.get('bytes_tx',0)+e.get('bytes_rx',0)<e['planned_bytes'] for e in eligible),zero=sum(e.get('bytes_tx',0)+e.get('bytes_rx',0)==0 for e in eligible),receiver_confirmed=sum((e.get('receiver_bytes',0)>=e['planned_bytes'] or e.get('direction')=='dl' and e.get('bytes_rx',0)>=e['planned_bytes']) and e['planned_bytes']>0 for e in eligible) if r.get('mode')=='lab' else 0,interpretation='Observed local quota; UL requires receiver acknowledgement. Historical states are preserved.')
@@ -578,7 +589,14 @@ class Manager:
         reads=[asyncio.create_task(read(proc,group)) for proc,group in prepared]
         joined=asyncio.gather(*reads)
         stop=asyncio.create_task(self.stops[rid].wait())
-        deadline=asyncio.create_task(asyncio.sleep(max(0,start-time.time())+plan['duration_s']+10))
+        # PILOT2b finding (2026-10-24): a 10s grace period was too tight for
+        # this lab's real agent-teardown variance -- several otherwise-healthy
+        # runs overshot it by only 1-3s ("Agents exceeded the experiment
+        # deadline"), e.g. a 180s plan finishing at 192.6s against a 190s
+        # deadline. 30s gives real headroom without masking an actual hang
+        # (kill_processes() below still runs unconditionally once the
+        # deadline/stop/joined race resolves).
+        deadline=asyncio.create_task(asyncio.sleep(max(0,start-time.time())+plan['duration_s']+30))
         try:
             done,_=await asyncio.wait([joined,stop,deadline],return_when=asyncio.FIRST_COMPLETED)
             if joined in done:
