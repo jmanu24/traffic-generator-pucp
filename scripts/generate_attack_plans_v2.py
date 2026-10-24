@@ -170,6 +170,26 @@ def build_composition_2():
 # ordinary measurement jitter), so SAFE_MARGIN alone covers it.
 SAFE_MARGIN = 0.85
 
+# PILOT2_RESULT.md finding (2026-10-24), confirmed against a DOCUMENTED,
+# pre-existing project issue (memory full-domain-attack-matrix-2026-10-18:
+# "hping3 en general también sobre-dispara a intervalos muy chicos" --
+# a nominal 60pps measured 216-229pps, ~3.6x): once composition3's
+# dedicated sources cleanly sent their requested rate_pps (agent.py's
+# own attack_pps_actual confirmed ~1.02x target -- the AGENT's pacing is
+# fine), the CONTROLLER's independent flow-stats pps measurement still
+# came in at 1.8-4.7x the target (91-169.8pps measured vs 36.2-65.2pps
+# targeted) during composition3's real attack window. hping3's -i
+# microsecond-interval pacing bursts packets unevenly at these low
+# rates; the agent's own packets_sent/duration average hides it, but
+# the controller's wire-level sampling catches the real bursts.
+# HPING3_OVERSHOOT_MARGIN divides the target rate down to cover the
+# worst observed ratio (4.69x) with room to spare -- weakens how much
+# of SYN_THRESHOLD composition3 can actually probe per the brief's own
+# rejected alternative (replacing hping3 with a software-paced emitter,
+# same pattern bng_flood.py already uses for the fixed domain) in favor
+# of shipping a working confirmatory design now.
+HPING3_OVERSHOOT_MARGIN = 5.0
+
 # 2 dedicated, benign-traffic-free sources per domain (down from 3) --
 # chosen from each domain's real extra hosts specifically because they
 # are easy to exclude from the benign population without starving the
@@ -184,6 +204,15 @@ COMPOSITION3_SOURCES = {
     'fixed': ['fixed9', 'fixed10'],
     'mobile': ['ue4', 'ue5'],
 }
+# 2026-10-24 correction: the 27/27 "hping3: command not found" failures
+# in pilot2b were mis-attributed to fixed9/fixed10 from the detection
+# record's domain='broadband' field -- the actual failing event_ids
+# were mobile/ue4 and mobile/ue5 (event_id is a hash of domain+source,
+# identical across plan versions since mobile's sources never changed).
+# validate_all_attack_sources.py confirmed hping3 was simply never
+# installed on the ue2 VM (10.10.0.16, hosts ue4/ue5) -- fixed9/fixed10
+# dispatch correctly and always did. Fixed by installing hping3 there;
+# all 20 candidate sources across all 3 domains now validate clean.
 
 
 def build_composition_3():
@@ -196,7 +225,7 @@ def build_composition_3():
     fixed, mobile), 2 sources per domain evenly split."""
     domains = ['enterprise', 'fixed', 'mobile']
     plans = []
-    headroom_per_source = SAFE_MARGIN * SYN_THRESHOLD
+    headroom_per_source = SAFE_MARGIN * SYN_THRESHOLD / HPING3_OVERSHOOT_MARGIN
     for f in (0.5, 0.7, 0.9):
         per_domain_rates, flows, domains_desc = {}, [], {}
         for domain in domains:
