@@ -194,7 +194,22 @@ def compute_availability(plan, run, tA, tF, event_states, cfg):
         # in docs/RESPONSE_METRICS_DESIGN.md as a known scope boundary.
         covered = w['evaluation']
         passed = covered and delivered_pct is not None and delivered_pct >= cfg['D'] and (p95 is None or p95 <= cfg['L'])
-        if in_attack and covered:
+        # PILOT2_RESULT.md (D7-pilot, resolved 2026-10-24): a run with NO
+        # attack window at all (tA/tF both None -- C1, benign-only) has
+        # no [tA,tF] to restrict eligible_windows to, which made A
+        # formally undefined for it (eligible_windows always empty,
+        # availability_pct=None) -- the impact criterion ("A(C2) <=
+        # A(C1) - 20pp") could never be computed for ANY benign-only
+        # reference condition. For that case, and only that case, every
+        # covered window counts as eligible -- A then measures the same
+        # thing it always does (fraction of covered windows meeting the
+        # D/L SLA jointly), just over the whole run instead of over
+        # [tA,tF], because there is no narrower period of interest to
+        # restrict to. A run that DOES have an attack window keeps the
+        # exact prior behavior (in_attack decides) -- no_attack_window
+        # is only ever true when tA is None in the first place.
+        no_attack_window = not finite(tA)
+        if (in_attack or no_attack_window) and covered:
             eligible_windows.append(w['window'])
             pass_by_window[w['window']] = passed
         elif covered:

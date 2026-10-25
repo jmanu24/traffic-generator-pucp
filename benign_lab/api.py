@@ -382,10 +382,9 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
         return dict(ok=True,scope='configuration_only; connectivity checked on lab start',groups=[dict(sources=sorted(g['sources']),events=len(g['events']),command=g['argv'],context=g['context']) for g in groups.values()])
     @app.get('/api/runs')
     async def list_runs():
-        result=[]
-        for rid in reversed(manager.runs):
-            value=manager.snapshot(rid);path=manager.folder(rid)/'detection_events.jsonl';value['audit_available']=path.exists() and path.stat().st_size>0;result.append(value)
-        return result
+        # audit_available is now computed/cached inside snapshot() itself
+        # (see runner.py's PILOT2b comment) -- no per-call stat() here.
+        return [manager.snapshot(rid) for rid in reversed(manager.runs)]
     @app.post('/api/runs')
     async def start_run(body:RunRequest):
         async with control_change_lock():

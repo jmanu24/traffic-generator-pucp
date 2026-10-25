@@ -124,6 +124,36 @@ def test_availability_fails_window_below_delivery_quota():
     assert r['availability_pct'] == 0.0
 
 
+def test_availability_is_defined_for_a_run_with_no_attack_window_at_all():
+    """PILOT2_RESULT.md (2026-10-24): a benign-only condition (C1) has
+    no observed_attacks at all, so tA/tF are both None -- before this
+    fix, eligible_windows was always empty for it and availability_pct
+    was unconditionally None, making the impact criterion ("A(C2) <=
+    A(C1) - 20pp") impossible to compute for ANY benign reference. Every
+    covered window now counts as eligible when there is no attack
+    window to restrict to."""
+    plan, run = make_plan(), make_run()
+    run['observed_attacks'] = []  # no attack at all, same as a real C1 run
+    es = make_event_states()  # delivered_pct=1.0, well above D=90%
+    r = rm.compute(plan, run, [], event_states=es)
+    assert r['tA'] is None and r['tF'] is None
+    assert r['availability_pct'] == 100.0
+    assert r['eligible_window_count'] == 6  # duration_s=30 / window_s=5, all covered
+
+
+def test_availability_with_an_attack_window_is_unchanged_by_the_no_attack_fix():
+    """Proof-of-no-change for the common (attack-window) case: identical
+    inputs/outputs to test_availability_fails_window_below_delivery_quota
+    above, confirming in_attack still gates eligible_windows exactly as
+    before whenever tA/tF are not None."""
+    plan, run = make_plan(), make_run()
+    records = [detection_record(1012), mitigation_record(1013)]
+    es = make_event_states(delivered_pct=.5)  # below D=90%
+    r = rm.compute(plan, run, records, event_states=es)
+    assert r['availability_pct'] == 0.0
+    assert r['eligible_window_count'] == 1  # only the one window overlapping [tA,tF]
+
+
 def test_recovery_tS_and_TR_after_attack_ends():
     plan = make_plan(duration_s=40)
     run = make_run(elapsed_s=40, attack_start_s=10, attack_end_s=15)
