@@ -83,10 +83,24 @@ def wait_for_completion(token, rid, timeout=600):
     # client itself timing out and starving the active run's event
     # loop. GET /api/runs/{rid} is the single-run equivalent (O(1) via
     # the same cached snapshot()) -- poll that instead.
+    # D7 campaign finding (2026-10-25): `not match.get('error')` was
+    # meant to reject call()'s own HTTP-error wrapper (e.g. {'error':
+    # True, 'status': 400, ...} when the request itself failed), but a
+    # run dict's OWN 'error' field holds its failure reason (e.g.
+    # "RuntimeError: Agent disconnected...") and is non-empty for every
+    # status='failed' run -- so this condition was NEVER true for a
+    # failed run, and the loop spun until `timeout` (900s in the D7
+    # campaign, masked by its own 600s watchdog as a "hang") on every
+    # single failure, not just HTTP-call errors. `status` already
+    # disambiguates on its own: call()'s error wrapper's own `status`
+    # is an HTTP code (int, e.g. 400), which can never equal one of
+    # these run-status strings -- the `not match.get('error')` clause
+    # was redundant when it worked and actively wrong the rest of the
+    # time, so it's dropped entirely rather than reordered.
     deadline = time.time() + timeout
     while time.time() < deadline:
         match = call(token, 'GET', f'/api/runs/{rid}')
-        if not match.get('error') and match.get('status') in ('completed', 'completed_with_errors', 'failed', 'stopped', 'interrupted'):
+        if match.get('status') in ('completed', 'completed_with_errors', 'failed', 'stopped', 'interrupted'):
             return match
         time.sleep(5)
     raise TimeoutError(f'Run {rid} did not finish within {timeout}s')

@@ -68,17 +68,64 @@ def test_recovery_marks_pending_events_interrupted(tmp_path):
 def test_startup_evicts_a_run_that_was_already_terminal_on_disk(tmp_path):
     """PILOT_RESULT.md section 1 (D7/PILOT2, 2026-10-23): a run already
     TERMINAL in its own run.json before this restart has complete,
-    well-formed event data -- __init__ evicts it (unlike the recovered-
-    mid-flight run above), and snapshot() must still report the exact
-    same derived numbers afterward, from the cached summary alone."""
+    well-formed event data -- __init__ never loads its event_states.json
+    at all (D7 campaign fix, 2026-10-25: no persisted terminal_summary.json
+    exists yet for it, so self.events simply has no entry -- not even
+    the old eager {} -- until something actually requests its snapshot,
+    unlike the recovered-mid-flight run above). snapshot() must still
+    report the exact same derived numbers afterward, computed lazily
+    from disk on first request."""
     folder=tmp_path/'already-done'
     folder.mkdir()
     (folder/'run.json').write_text(json.dumps(dict(id='already-done',status='failed',finished_at=1,elapsed_s=5,duration_s=5)))
     (folder/'event_states.json').write_text(json.dumps({'e':dict(domain='fixed',status='failed',rate_bps=8,bytes_tx=3,bytes_rx=4)}))
     m=Manager(tmp_path)
-    assert m.events['already-done']=={}
+    assert 'already-done' not in m.events
+    assert 'already-done' not in m.terminal_metrics
     assert m.snapshot('already-done')['counts']=={'failed':1}
     assert m.snapshot('already-done')['bytes_tx']==3 and m.snapshot('already-done')['bytes_rx']==4
+
+
+def test_startup_reads_a_persisted_terminal_summary_without_touching_events(tmp_path):
+    """The actual D7 campaign fix: once a terminal run's summary has been
+    computed and persisted once (terminal_summary.json), a FRESH Manager
+    (simulating the next process restart) must read that tiny file alone
+    -- never event_states.json -- and report it via snapshot() with no
+    further computation."""
+    folder=tmp_path/'already-summarized'
+    folder.mkdir()
+    (folder/'run.json').write_text(json.dumps(dict(id='already-summarized',status='completed',finished_at=1,elapsed_s=5,duration_s=5)))
+    summary=dict(counts={'completed':1},bytes_tx=99,bytes_rx=88,shortfall_bytes=0,active_planned_mbps=0.0,
+                 domains={d:dict(counts={},bytes_tx=0,bytes_rx=0,active_planned_mbps=0.0) for d in ('mobile','fixed','enterprise','peering')},
+                 audit_available=False,payload_quality=dict(eligible=0,full_local=0,partial=0,zero=0,receiver_confirmed=0,interpretation='x'))
+    (folder/'terminal_summary.json').write_text(json.dumps(summary))
+    # Deliberately NO event_states.json on disk at all -- if snapshot()
+    # ever fell back to events_for() instead of the cached summary, this
+    # would prove it by returning zeros/empty instead of the asserted
+    # values below, not by raising.
+    m=Manager(tmp_path)
+    assert m.terminal_metrics['already-summarized']==summary
+    r=m.snapshot('already-summarized')
+    assert r['bytes_tx']==99 and r['bytes_rx']==88
+    assert r['payload_quality']['interpretation']=='x'
+
+
+def test_snapshot_persists_a_terminal_summary_the_first_time_its_computed(tmp_path):
+    """The write side of the same fix: the FIRST snapshot() of a terminal
+    run with no cached summary yet must write terminal_summary.json (so
+    the NEXT Manager() lifetime never re-reads event_states.json for it)."""
+    m=Manager(tmp_path);rid='fresh-terminal'
+    m.runs[rid]=dict(id=rid,status='completed',finished_at=1,elapsed_s=5,duration_s=5,mode='lab')
+    e=dict(domain='fixed',status='completed',rate_bps=8,bytes_tx=10,bytes_rx=20,
+           wire_protocol='tcp',planned_bytes=30,shortfall_bytes=0)
+    m.events[rid]={'e':e};m.logs[rid]=[]
+    m.folder(rid).mkdir(parents=True)
+    assert not m.terminal_summary_path(rid).exists()
+    r=m.snapshot(rid)
+    assert r['bytes_tx']==10 and r['bytes_rx']==20
+    assert m.terminal_summary_path(rid).exists()
+    persisted=json.loads(m.terminal_summary_path(rid).read_text())
+    assert persisted['bytes_tx']==10 and persisted['payload_quality']['full_local']==1
 
 
 def test_events_for_reads_an_evicted_terminal_runs_events_from_disk(tmp_path):

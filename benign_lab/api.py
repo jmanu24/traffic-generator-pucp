@@ -381,10 +381,22 @@ def create_app(data_dir=None,lab_path=None,profiles_path=None,token=None):
         groups=resolve(load_lab(lab_path),read_plan(ph))
         return dict(ok=True,scope='configuration_only; connectivity checked on lab start',groups=[dict(sources=sorted(g['sources']),events=len(g['events']),command=g['argv'],context=g['context']) for g in groups.values()])
     @app.get('/api/runs')
-    async def list_runs():
+    async def list_runs(limit:Optional[int]=None):
         # audit_available is now computed/cached inside snapshot() itself
         # (see runner.py's PILOT2b comment) -- no per-call stat() here.
-        return [manager.snapshot(rid) for rid in reversed(manager.runs)]
+        # D7 campaign finding (2026-10-25): `limit` was accepted as a
+        # query param by every caller (run_pilot.py's own polling) but
+        # silently ignored here -- every call computed+serialized ALL
+        # run snapshots (578 and growing) regardless, each with its own
+        # domains/payload_quality/logs -- ~15s per call even with
+        # runner.py's terminal_summary.json cache already in place,
+        # since that fixes snapshot()'s own cost per run, not the
+        # O(total runs) fan-out across all of them. Slicing BEFORE
+        # calling snapshot() actually bounds the work to `limit` runs,
+        # not just the response size.
+        rids=list(reversed(manager.runs))
+        if limit is not None:rids=rids[:limit]
+        return [manager.snapshot(rid) for rid in rids]
     @app.post('/api/runs')
     async def start_run(body:RunRequest):
         async with control_change_lock():
