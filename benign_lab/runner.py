@@ -66,11 +66,11 @@ class Manager:
             run=json.loads(file.read_text())
             eid=run['id']
             self.runs[eid]=run
-            ep=file.parent/'event_states.json'
-            self.events[eid]=json.loads(ep.read_text()) if ep.exists() else {}
             lp=file.parent/'logs.jsonl'
             self.logs[eid]=[json.loads(line) for line in lp.read_text().splitlines()[-200:] if line.strip()] if lp.exists() else []
             if run['status'] not in TERMINAL:
+                ep=file.parent/'event_states.json'
+                self.events[eid]=json.loads(ep.read_text()) if ep.exists() else {}
                 run.update(status='interrupted',error='Orchestrator restarted; no automatic replay',finished_at=time.time())
                 for e in self.events[eid].values():
                     if e['status'] in ('pending','running'): e['status']='interrupted'
@@ -83,18 +83,39 @@ class Manager:
                 # this had before eviction existed -- one recovered run's
                 # footprint is not the O(total history) problem below.
             else:
-                # PILOT_RESULT.md section 1 (D7 pilot, confirmed live again
-                # 2026-10-23, PILOT2): keeping every historical run's full
-                # event_states in memory forever makes this __init__ loop
-                # -- and every request thereafter -- O(total runs ever
-                # recorded), not O(active runs). A run already terminal
-                # before this restart has complete, well-formed event
-                # data, so evict_events() (via snapshot()) can safely
-                # compute and cache its derived summaries once, then drop
-                # the raw per-event dict.
-                self.evict_events(eid)
+                # D7 campaign finding (2026-10-25): PILOT_RESULT.md section
+                # 1's eviction (below) still paid the full cost of reading
+                # event_states.json AND recomputing terminal_metrics for
+                # EVERY historical terminal run on EVERY process restart --
+                # with 576+ accumulated runs (1.16M total events, 9.6GB),
+                # that's a 30+ minute synchronous __init__, blocking the
+                # whole event loop (and every request) before the server
+                # can even start. terminal_summary_path() persists the
+                # computed summary to its OWN tiny file the first time
+                # it's ever computed (right below, and in snapshot()'s own
+                # cache-miss branch) -- __init__ now reads just THAT file
+                # when present (near-O(1)) and skips event_states.json
+                # entirely; only a run whose summary was never computed
+                # before (e.g. ones that predate this fix) falls through
+                # to the old lazy-compute-on-first-request path via
+                # snapshot()/events_for(), which then persists it too, so
+                # the cost is paid at most once per run, ever -- not once
+                # per run per restart.
+                summary_path=self.terminal_summary_path(eid)
+                if summary_path.exists():
+                    try:
+                        self.terminal_metrics[eid]=json.loads(summary_path.read_text())
+                        continue
+                    except (OSError,ValueError):pass  # fall through to the lazy path below
+                # No cached summary yet -- do NOT read event_states.json
+                # here either; leave self.events[eid] unset so events_for()
+                # reads it from disk lazily, only if/when something actually
+                # requests this run's snapshot (never during __init__ for a
+                # restart's whole backlog at once).
 
     def folder(self, rid): return self.root/rid
+
+    def terminal_summary_path(self,rid): return self.folder(rid)/'terminal_summary.json'
 
     def events_for(self,rid):
         """Full per-event state for `rid`: from memory if this run is
@@ -135,14 +156,15 @@ class Manager:
         if cached is not None:
             r.update(copy.deepcopy(cached))
         else:
-            r['counts']=dict(Counter(e['status'] for e in self.events[rid].values()))
-            r['bytes_tx']=sum(e.get('bytes_tx',0) for e in self.events[rid].values())
-            r['bytes_rx']=sum(e.get('bytes_rx',0) for e in self.events[rid].values())
-            r['shortfall_bytes']=sum(e.get('shortfall_bytes',0) for e in self.events[rid].values())
-            r['active_planned_mbps']=sum(e['rate_bps'] for e in self.events[rid].values() if e['status']=='running')/1e6
+            events=self.events_for(rid)
+            r['counts']=dict(Counter(e['status'] for e in events.values()))
+            r['bytes_tx']=sum(e.get('bytes_tx',0) for e in events.values())
+            r['bytes_rx']=sum(e.get('bytes_rx',0) for e in events.values())
+            r['shortfall_bytes']=sum(e.get('shortfall_bytes',0) for e in events.values())
+            r['active_planned_mbps']=sum(e['rate_bps'] for e in events.values() if e['status']=='running')/1e6
             r['domains']={}
             for domain in ('mobile','fixed','enterprise','peering'):
-                es=[e for e in self.events[rid].values() if e['domain']==domain]
+                es=[e for e in events.values() if e['domain']==domain]
                 r['domains'][domain]=dict(counts=dict(Counter(e['status'] for e in es)),bytes_tx=sum(e.get('bytes_tx',0) for e in es),bytes_rx=sum(e.get('bytes_rx',0) for e in es),active_planned_mbps=sum(e['rate_bps'] for e in es if e['status']=='running')/1e6)
             # PILOT2b finding (2026-10-24): list_runs() used to stat()
             # detection_events.jsonl for every run on every poll -- with
@@ -158,10 +180,25 @@ class Manager:
             if r['status'] in TERMINAL and r.get('finished_at'):
                 self.terminal_metrics[rid]={k:copy.deepcopy(r[k]) for k in ('counts','bytes_tx','bytes_rx','shortfall_bytes','active_planned_mbps','domains','audit_available')}
         if 'payload_quality' not in r:
-            eligible=[e for e in self.events[rid].values() if e.get('wire_protocol') in ('tcp','http','udp') and e['status'] not in ('pending','running')]
+            events=self.events_for(rid)
+            eligible=[e for e in events.values() if e.get('wire_protocol') in ('tcp','http','udp') and e['status'] not in ('pending','running')]
             r['payload_quality']=dict(eligible=len(eligible),full_local=sum(e.get('bytes_tx',0)+e.get('bytes_rx',0)>=e['planned_bytes'] for e in eligible),partial=sum(0<e.get('bytes_tx',0)+e.get('bytes_rx',0)<e['planned_bytes'] for e in eligible),zero=sum(e.get('bytes_tx',0)+e.get('bytes_rx',0)==0 for e in eligible),receiver_confirmed=sum((e.get('receiver_bytes',0)>=e['planned_bytes'] or e.get('direction')=='dl' and e.get('bytes_rx',0)>=e['planned_bytes']) and e['planned_bytes']>0 for e in eligible) if r.get('mode')=='lab' else 0,interpretation='Observed local quota; UL requires receiver acknowledgement. Historical states are preserved.')
             if r['status'] in TERMINAL and r.get('finished_at'):
                 self.terminal_metrics[rid]['payload_quality']=copy.deepcopy(r['payload_quality'])
+                # Persist once the full summary (counts/bytes/.../
+                # payload_quality) is complete -- see __init__'s own
+                # comment for why this is the fix for the 30+ minute
+                # restart cost: every future process lifetime reads this
+                # tiny file instead of event_states.json (which can be
+                # several MB) and never recomputes any of the above.
+                # Best-effort: this run's own folder may not exist yet in
+                # some in-memory-only call patterns (e.g. tests driving
+                # Manager directly without ever creating it on disk) --
+                # exactly like LAB_AUDIT's own emit(), a caching write
+                # failing here must never break snapshot()'s primary job
+                # of returning the correct in-memory metrics.
+                try:atomic_json(self.terminal_summary_path(rid),self.terminal_metrics[rid])
+                except OSError:pass
         if r.get('purpose')=='domain_benchmark':
             actual=r['bytes_tx']+r['bytes_rx'];planned=r['benchmark_planned_bytes']
             r['benchmark_metrics']=dict(domain=r['benchmark_domain'],planned_bytes=planned,actual_bytes=actual,observed_pct=100*actual/planned,planned_mean_mbps=planned*8/r['duration_s']/1e6,observed_mean_mbps=actual*8/max(r['elapsed_s'],.001)/1e6,failed_events=r['counts'].get('failed',0),final=r['status'] in TERMINAL)
