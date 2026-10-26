@@ -54,16 +54,6 @@ def command(node, supervisor=False):
     user = node.get('user') or ''
     if not re.fullmatch(r'[A-Za-z0-9_.:@-]+',host) or host.startswith('-') or not re.fullmatch(r'[A-Za-z0-9_.-]+',user) or user.startswith('-'):
         raise ValueError('Invalid SSH host/user')
-    # D7 campaign incident (2026-10-26): ServerAliveCountMax=2 at a 5s
-    # interval gave only 10s of tolerance before ssh itself killed the
-    # control channel -- a real attack scenario's own heavy traffic
-    # saturates a Workstation-hosted VM's control path for ~57-60s,
-    # well past that, so ssh (not the controller's mitigation, which
-    # was ruled out) tore down the connection and runner.py's
-    # all-or-nothing asyncio.gather then killed the whole multi-domain
-    # run. 12 missed keepalives (60s) covers the observed stall with
-    # margin while still detecting a genuinely dead agent reasonably
-    # fast.
     args = ['ssh','-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=8','-o','ServerAliveInterval=5','-o','ServerAliveCountMax=12','-p',str(int(node.get('port',22)))]
     if node.get('identity_file'): args += ['-i',node['identity_file']]
     if node.get('known_hosts_file'): args += ['-o','UserKnownHostsFile='+node['known_hosts_file']]
