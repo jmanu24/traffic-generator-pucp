@@ -1,0 +1,1602 @@
+[
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T045045-5d726104",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T050325-7e1fc9a0",
+    "label": "M",
+    "detected": true,
+    "delay_s": 0.8825168609619141,
+    "n_alerts": 21
+  },
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T050737-d3649139",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.9449903964996338,
+    "n_alerts": 30
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T010448-85a59bd6",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T051622-3f94205f",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T052910-05a9773c",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T055039-979a48ff",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0200471878051758,
+    "n_alerts": 116
+  },
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T060714-41abd600",
+    "label": "I",
+    "detected": true,
+    "delay_s": 2.931072473526001,
+    "n_alerts": 177
+  },
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T061129-ae169665",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T061544-d0d1c945",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261026T063205-02918552",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T063618-98ac101f",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.2043211460113525,
+    "n_alerts": 203
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261026T064027-533ae3b5",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T065259-c89e6208",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T070121-50653321",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T071354-fe8827dc",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.142742872238159,
+    "n_alerts": 219
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T073444-872a353f",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.9443819522857666,
+    "n_alerts": 18
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T073857-518ef925",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T074706-ffe69c31",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T075128-e37d4664",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T075946-88746f9d",
+    "label": "M",
+    "detected": true,
+    "delay_s": 0.9655277729034424,
+    "n_alerts": 23
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T081300-34b3899f",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.280562162399292,
+    "n_alerts": 194
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T082939-6e6d85f3",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T083354-84b24b44",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T091515-877f6754",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.266566514968872,
+    "n_alerts": 215
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T093622-dff76590",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.915457010269165,
+    "n_alerts": 27
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T094449-b94d4d67",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T094900-a4b27bf1",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.0621395111083984,
+    "n_alerts": 141
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T101435-700ebdfc",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T113440-a9e39d5e",
+    "label": "I",
+    "detected": true,
+    "delay_s": 57.91028666496277,
+    "n_alerts": 4
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T114304-237347da",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.9384877681732178,
+    "n_alerts": 17
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T114722-d84ddbb0",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T103137-e52a3de5",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T104409-42ec1576",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.8910903930664062,
+    "n_alerts": 148
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T110131-00b274fe",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T110538-584fdaf7",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T112558-03c13fe9",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.441847562789917,
+    "n_alerts": 229
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T113018-6a67d36e",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T121643-782169b2",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0833208560943604,
+    "n_alerts": 159
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T122053-7a61881c",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.9577221870422363,
+    "n_alerts": 25
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T124447-6b388134",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T124910-0696cf8a",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.027897834777832,
+    "n_alerts": 25
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T125326-fc0138d3",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T125802-27a10ba0",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.0714616775512695,
+    "n_alerts": 163
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T131121-bbed4ce2",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T131545-eb28db8e",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T134053-9d721c8e",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T134908-5bbf9bc4",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T135320-bbc4ea1c",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.4493772983551025,
+    "n_alerts": 199
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T142302-d9239527",
+    "label": "M",
+    "detected": true,
+    "delay_s": 0.9536967277526855,
+    "n_alerts": 24
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T142729-e3f1905a",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T144826-f3e451e1",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.1716530323028564,
+    "n_alerts": 155
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T145240-5ae97784",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261026T145653-a1b9195b",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T150125-9547d0a6",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T150943-f095c166",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.7520768642425537,
+    "n_alerts": 196
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T151759-862bf741",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T154059-49323ba0",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.974045991897583,
+    "n_alerts": 14
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T154936-bd4921b6",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T160214-177b4c91",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.1517653465270996,
+    "n_alerts": 150
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T161840-d5262062",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T162254-18c9e617",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T163612-1b7a1178",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.1331398487091064,
+    "n_alerts": 155
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T164827-69d9e40b",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.9047479629516602,
+    "n_alerts": 23
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261026T165244-a3c6d956",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T170230-85522b57",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T175254-dba7e327",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.1731619834899902,
+    "n_alerts": 145
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T171926-b5eae332",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.6170849800109863,
+    "n_alerts": 211
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T175735-b4e56da6",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T173227-79ddeac3",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0967583656311035,
+    "n_alerts": 21
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T181410-278825b3",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0544519424438477,
+    "n_alerts": 29
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261026T182257-e00c8fda",
+    "label": "I",
+    "detected": true,
+    "delay_s": 23.58938694000244,
+    "n_alerts": 2
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T182734-4aae684e",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.0238959789276123,
+    "n_alerts": 24
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T193447-a11687ce",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.015028238296509,
+    "n_alerts": 196
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T184429-77d74539",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T195147-a74d62c0",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T200015-a8caa89d",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T191354-88a138d7",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0660429000854492,
+    "n_alerts": 148
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T191806-96b282dc",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.2102398872375488,
+    "n_alerts": 131
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T201732-085b2523",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T202149-3bec9433",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T213734-69b19880",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T203423-4372c83d",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.192714214324951,
+    "n_alerts": 209
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T214640-d7c4c7ab",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T204705-66b9fe88",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261026T210310-381c5612",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.0344727039337158,
+    "n_alerts": 145
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T211655-8f7b10b8",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.882056713104248,
+    "n_alerts": 23
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T212112-bb7504c1",
+    "label": "M",
+    "detected": true,
+    "delay_s": 0.9663650989532471,
+    "n_alerts": 23
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261026T230418-73865477",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261026T221643-548d1123",
+    "label": "I",
+    "detected": true,
+    "delay_s": 3.7027409076690674,
+    "n_alerts": 182
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261026T222056-91630f30",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0238654613494873,
+    "n_alerts": 23
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261026T222910-b7896ead",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T223727-5e4eaa36",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261026T234656-48823f79",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261026T225149-87d7fd4f",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261027T011625-9c58720d",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.0197405815124512,
+    "n_alerts": 139
+  },
+  {
+    "seed": 2,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261027T012839-89ca1f7e",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T013654-3077391c",
+    "label": "I",
+    "detected": true,
+    "delay_s": 27.50391387939453,
+    "n_alerts": 2
+  },
+  {
+    "seed": 3,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261027T014514-67a576a2",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261027T014926-5d735224",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261027T073431-cd26ee80",
+    "label": "M",
+    "detected": true,
+    "delay_s": 0.9956324100494385,
+    "n_alerts": 26
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261027T015812-b335d123",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0236237049102783,
+    "n_alerts": 153
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261027T020638-e544bee0",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.307525396347046,
+    "n_alerts": 161
+  },
+  {
+    "seed": 4,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T074313-58428c8e",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261027T021854-332f3719",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.589169979095459,
+    "n_alerts": 24
+  },
+  {
+    "seed": 6,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261027T090609-70391afd",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261027T023555-cec13a1f",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261027T031830-5f059024",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C3",
+    "scenario_id": "composition1_fixed",
+    "run_id": "20261027T030117-15ecd3f8",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261027T030530-f6326352",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T034308-ed170760",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261027T034734-6a43e245",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0164482593536377,
+    "n_alerts": 147
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261027T033114-2a1ce2b4",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T035811-da3c9b9e",
+    "label": "I",
+    "detected": true,
+    "delay_s": 41.77236223220825,
+    "n_alerts": 2
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition1_mobile",
+    "run_id": "20261027T040644-417d0b03",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261027T043630-0c9d51ae",
+    "label": "M",
+    "detected": true,
+    "delay_s": 1.0777530670166016,
+    "n_alerts": 195
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition1_peering",
+    "run_id": "20261027T083352-c3d1053d",
+    "label": "I",
+    "detected": true,
+    "delay_s": 0.9032011032104492,
+    "n_alerts": 28
+  },
+  {
+    "seed": 10,
+    "condition": "C3",
+    "scenario_id": "composition1_enterprise",
+    "run_id": "20261027T083805-d96823ea",
+    "label": "I",
+    "detected": true,
+    "delay_s": 1.019660234451294,
+    "n_alerts": 142
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261027T222029-1ab7435e",
+    "label": "M",
+    "detected": true,
+    "delay_s": 4.4198317527771,
+    "n_alerts": 159
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T223306-ebf2f7dc",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261027T223723-c2b404a9",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 1,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261027T222851-d085baea",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261028T013503-0571e54a",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.6315958499908447,
+    "n_alerts": 157
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T225817-59f10d28",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261027T224540-5e4d81ba",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261027T230237-61abb78b",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.8305246829986572,
+    "n_alerts": 210
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T230653-691e8d20",
+    "label": "M",
+    "detected": true,
+    "delay_s": 34.3542001247406,
+    "n_alerts": 2
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261027T231508-622b05af",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 3,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261027T231915-9c0130b9",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261028T014316-bdcd994b",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261027T232818-f73294e4",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261027T233235-f0238a5b",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.5888710021972656,
+    "n_alerts": 210
+  },
+  {
+    "seed": 4,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261027T233650-3d9f6db0",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261027T234453-e2ac424d",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261027T234906-ad45ca73",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261027T235314-94ed0246",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261028T014735-533488cf",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.736011266708374,
+    "n_alerts": 216
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261028T015150-4274de86",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261028T020241-32689d96",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261028T000210-16751117",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.610767126083374,
+    "n_alerts": 153
+  },
+  {
+    "seed": 6,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261028T000628-514fbbfc",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261028T002320-75588d38",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261028T002758-9194ed15",
+    "label": "M",
+    "detected": true,
+    "delay_s": 57.447551012039185,
+    "n_alerts": 1
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261028T001450-e493e5ac",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261028T001904-f5de029e",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.3415474891662598,
+    "n_alerts": 205
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261028T003222-7c6d7edb",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261028T003637-688cca1f",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.655580520629883,
+    "n_alerts": 187
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261028T004452-6041668d",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 8,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261028T004903-8ff61784",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261028T005319-dba91e15",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261028T005759-88185e07",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261028T010220-3ec87e5a",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 9,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261028T010635-19cb4fb7",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.4764552116394043,
+    "n_alerts": 184
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261028T012317-fe7f7301",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261028T012758-4eca5e52",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261028T011451-194dea2b",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 10,
+    "condition": "C4",
+    "scenario_id": "composition2_multidomain_over_threshold",
+    "run_id": "20261028T011902-2a47d329",
+    "label": "M",
+    "detected": true,
+    "delay_s": 3.5613949298858643,
+    "n_alerts": 149
+  },
+  {
+    "seed": 2,
+    "condition": "C4",
+    "scenario_id": "composition3_f05",
+    "run_id": "20261028T021949-1418b888",
+    "label": "M",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 5,
+    "condition": "C3",
+    "scenario_id": "composition3_f09",
+    "run_id": "20261028T030044-0fcd1ab4",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  },
+  {
+    "seed": 7,
+    "condition": "C3",
+    "scenario_id": "composition3_f07",
+    "run_id": "20261028T023245-8c9b214b",
+    "label": "I",
+    "detected": false,
+    "delay_s": null,
+    "n_alerts": 0
+  }
+]

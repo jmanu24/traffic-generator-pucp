@@ -1,0 +1,100 @@
+[
+  {
+    "condition": "C3",
+    "run_id": "20261022T044905-d2321715",
+    "status": "completed_with_errors",
+    "availability_pct": 0.0,
+    "tE": {
+      "value": null,
+      "censored": true,
+      "observed_duration_s": null,
+      "reason": "no_independent_rate_series"
+    },
+    "tD": {
+      "value": null,
+      "censored": true,
+      "observed_duration_s": 119.9979088306427,
+      "reason": "no_matching_detection"
+    },
+    "tO": {
+      "value": null,
+      "censored": true,
+      "observed_duration_s": 119.9979088306427,
+      "reason": "no_matching_mitigation"
+    },
+    "TD": null,
+    "TO": null,
+    "TM": null,
+    "mitigated_domain": null,
+    "sequence_position": 190,
+    "seconds_since_restart": 13.966451644897461,
+    "panel_process_memory_kb_at_start": 1554436,
+    "detection_mode_verification": {
+      "audit_cycle_evidence": {
+        "event_id": "2ad899b21e8742b398fb3b948648b5b0",
+        "timestamp": 1792658964.0029292,
+        "value": false
+      },
+      "log_evidence": {
+        "applied": "isolated",
+        "controller_restarted": true
+      },
+      "post_restart_forwarding_state": {
+        "active_blocks": {},
+        "event_id": "eaef21c67a974a41af8ed9423c614c23",
+        "settle_s": 5,
+        "timestamp": 1792658968.764288
+      },
+      "requested": "isolated"
+    }
+  },
+  {
+    "condition": "C4",
+    "run_id": "20261022T045458-e55d4e2d",
+    "status": "completed_with_errors",
+    "availability_pct": 0.0,
+    "tE": {
+      "value": null,
+      "censored": true,
+      "observed_duration_s": 116.70231199264526,
+      "reason": "no_samples_in_tA_tO_baseline_window"
+    },
+    "tD": {
+      "value": 1792659473.5485148,
+      "censored": false,
+      "observed_duration_s": 0.0,
+      "reason": null
+    },
+    "tO": {
+      "value": 1792659473.5568385,
+      "censored": false,
+      "observed_duration_s": 0.0,
+      "reason": null
+    },
+    "TD": 3.287285566329956,
+    "TO": 0.00832366943359375,
+    "TM": null,
+    "mitigated_domain": "enterprise",
+    "sequence_position": 191,
+    "seconds_since_restart": 15.687555074691772,
+    "panel_process_memory_kb_at_start": 1608180,
+    "detection_mode_verification": {
+      "audit_cycle_evidence": {
+        "event_id": "70687da038fe4c22a2ee406d0700810d",
+        "timestamp": 1792659322.888679,
+        "value": true
+      },
+      "log_evidence": {
+        "applied": "multidomain",
+        "controller_restarted": true
+      },
+      "post_restart_forwarding_state": {
+        "active_blocks": {},
+        "event_id": "45f76d4a616543fdba41449495cd0182",
+        "settle_s": 5,
+        "timestamp": 1792659328.2845516
+      },
+      "requested": "multidomain"
+    }
+  }
+]
