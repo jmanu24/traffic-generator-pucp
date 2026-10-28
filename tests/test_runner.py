@@ -1,6 +1,8 @@
 import asyncio
 import copy
 import json
+import os
+import signal
 import time
 import sys
 import pytest
@@ -41,6 +43,70 @@ def test_real_runner_payload_and_persisted_result(tmp_path):
             assert result['elapsed_s']==5
             assert (manager.folder(r['id'])/'benign_plan.json').read_bytes()==path.read_bytes()
             assert all(e['lateness_s'] is not None and e['src_port'] for e in manager.events[r['id']].values())
+        finally:
+            await manager.shutdown()
+            receiver.close()
+            await receiver.wait_closed()
+            udp.close()
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(sys.platform=='win32', reason='Local laboratory worker requires Linux/POSIX')
+def test_one_domains_agent_dying_does_not_fail_the_others(tmp_path):
+    """2026-10-26 incident: a domain's own control channel dying under its
+    own traffic load used to cascade -- asyncio.gather(*reads) without
+    return_exceptions=True surfaced that FIRST failure immediately, so the
+    unconditional kill_processes() right after tore down every OTHER
+    domain's still-healthy agent as collateral damage. Killing one
+    domain's agent process mid-run must now only fail that domain's own
+    events; the other domain's own events must still complete normally."""
+    async def scenario():
+        receiver=await asyncio.start_server(receive_client,'127.0.0.1',0)
+        port=receiver.sockets[0].getsockname()[1]
+        udp,_=await asyncio.get_running_loop().create_datagram_endpoint(UDPReceiver,local_addr=('127.0.0.1',0))
+        uport=udp.get_extra_info('sockname')[1]
+        cfg=load_lab(ROOT/'config/lab.demo.yaml')
+        cfg['start_lead_s']=.1
+        cfg['targets']['victim-web'].update(tcp_port=port,http_port=port,udp_port=uport)
+        plan=generate(load_profiles(ROOT/'profiles'),7,5)
+        prototype=plan['events'][0]
+        plan['events']=[]
+        # mobile (ue1) and fixed (fixed1) resolve to two SEPARATE local
+        # processes (config.resolve() groups by argv+context) -- fixed1's
+        # own process gets killed below; ue1's must be unaffected.
+        for domain,source in (('mobile','ue1'),('fixed','fixed1')):
+            e=dict(prototype,event_id=f'{domain}-test0',domain=domain,source=source,destination='victim-web',
+                   protocol='tcp',wire_protocol='tcp',direction='ul',start_s=.2,duration_s=2,
+                   rate_bps=19200,rate_fraction=.000192,planned_bytes=4800,packet_size_bytes=200)
+            plan['events'].append(e)
+        plan['summary']=summarize(plan)
+        plan['plan_hash']=plan_hash(plan)
+        path=save_plan(plan,tmp_path/'plan.json')
+        manager=Manager(tmp_path/'runs')
+        try:
+            r=await manager.start(plan,path,cfg,mode='lab',speed=1)
+            rid=r['id']
+            # Wait until both agents are scheduled and running (past the
+            # still-all-or-nothing clock-probe phase this fix doesn't
+            # touch), then kill fixed1's own agent process directly --
+            # same effect read() sees as its SSH control channel dying
+            # mid-run (EOF on stdout, never the 'done' envelope).
+            deadline=time.monotonic()+5
+            fixed_entry=None
+            while time.monotonic()<deadline:
+                if manager.runs[rid].get('status')=='running':
+                    fixed_entry=next((a for a in manager.runs[rid]['agents'].values() if 'fixed1' in a['sources']),None)
+                    if fixed_entry and fixed_entry.get('pid'): break
+                await asyncio.sleep(.05)
+            assert fixed_entry and fixed_entry.get('pid'),'fixed1 agent never started running'
+            os.kill(fixed_entry['pid'],signal.SIGKILL)
+            await asyncio.wait_for(manager.tasks[rid],15)
+            result=manager.snapshot(rid)
+            assert result['status']=='completed_with_errors',result
+            events=manager.events_for(rid)
+            assert events['mobile-test0']['status']=='completed',events['mobile-test0']
+            assert events['fixed-test0']['status']=='failed',events['fixed-test0']
+            assert 'disconnected' in events['fixed-test0']['error'].lower()
         finally:
             await manager.shutdown()
             receiver.close()

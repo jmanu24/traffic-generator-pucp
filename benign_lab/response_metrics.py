@@ -182,7 +182,7 @@ def compute_availability(plan, run, tA, tF, event_states, cfg):
         planned = sum(e.get('planned_bytes', 0) * overlap(a, b, e['start_s'], e['start_s'] + e['duration_s']) / e['duration_s'] for e in plan.get('events', []) if e.get('duration_s', 0) > 0)
         actual = sum((e.get('bytes_tx', 0) + e.get('bytes_rx', 0)) * overlap(a, b, e['start_s'], e['start_s'] + e['duration_s']) / e['duration_s'] for e in es if e.get('duration_s', 0) > 0)
         delivered_pct = 100 * actual / planned if planned else None
-        lateness = [e['lateness_s'] * 1000 for e in es if finite(e.get('lateness_s')) and a <= e.get('actual_end_s', e.get('start_s', -1)) < b]
+        lateness = [e['lateness_s'] * 1000 for e in es if finite(e.get('lateness_s')) and a <= (e.get('actual_end_s') if e.get('actual_end_s') is not None else e.get('start_s', -1)) < b]
         p95 = percentile(lateness, .95)
         # SIMPLIFICATION, stated explicitly: "valid coverage" here is the
         # window being complete and past warmup (ground_truth.windows()'s

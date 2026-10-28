@@ -624,7 +624,25 @@ class Manager:
                 errtask.cancel()
                 await asyncio.gather(errtask,return_exceptions=True)
         reads=[asyncio.create_task(read(proc,group)) for proc,group in prepared]
-        joined=asyncio.gather(*reads)
+        # 2026-10-26 incident: a single domain's control-path SSH keepalive
+        # dying under its own attack-scenario traffic load (confirmed via a
+        # dedicated investigation: ~57-90s control-path stalls on
+        # Workstation-hosted VMs, with or without a real controller
+        # mitigation active) used to take down the OTHER 3 domains as
+        # collateral damage -- asyncio.gather(*reads) without
+        # return_exceptions=True surfaces the FIRST read() failure the
+        # instant it happens, so `joined` was "done" (in the asyncio.wait
+        # below) while healthy groups were still mid-run, and the `finally`
+        # block's unconditional kill_processes() tore down their still-live
+        # SSH sessions too. return_exceptions=True instead makes `joined`
+        # wait for every group's own read() to finish (successfully or
+        # not) -- a dead group no longer takes a healthy one down with it.
+        # (supervisor_per_vm bundles several groups behind one shared
+        # process/session -- isolation there is still only as granular as
+        # that shared process; this fixes the ssh_per_worker/local
+        # transport this incident actually used, where each group owns its
+        # own process.)
+        joined=asyncio.gather(*reads,return_exceptions=True)
         stop=asyncio.create_task(self.stops[rid].wait())
         # PILOT2b finding (2026-10-24): a 10s grace period was too tight for
         # this lab's real agent-teardown variance -- several otherwise-healthy
@@ -637,7 +655,10 @@ class Manager:
         try:
             done,_=await asyncio.wait([joined,stop,deadline],return_when=asyncio.FIRST_COMPLETED)
             if joined in done:
-                await joined
+                results=await joined
+                for (proc,group),result in zip(prepared,results):
+                    if isinstance(result,Exception):
+                        self.fail_group(rid,group,result)
                 # A plan with early-ending events still observes the whole interval.
                 remaining=max(0,self.origins[rid]+plan['duration_s']-time.monotonic())
                 try: await asyncio.wait_for(self.stops[rid].wait(),remaining)
@@ -651,6 +672,19 @@ class Manager:
             if not joined.done(): joined.cancel()
             await asyncio.gather(joined,return_exceptions=True)
             await asyncio.gather(*(session.task for session in sessions),return_exceptions=True)
+
+    def fail_group(self,rid,group,exc):
+        """Record one group's own read() failure (e.g. its SSH control
+        channel dying under that domain's own traffic load) without
+        touching any other group's events -- the isolation half of the
+        2026-10-26 fix (see real()'s own comment on `joined`)."""
+        error='%s: %s' % (type(exc).__name__,str(exc) or 'Agent group failed')
+        self.log(rid,f'{", ".join(sorted(group["sources"]))}: {error}','error')
+        for planned in group['events']:
+            e=self.events[rid].get(planned['event_id'])
+            if e and e['status'] in ('pending','running'):
+                e['status']='failed'
+                e['error']=error
 
     async def kill_processes(self,rid):
         live=[p for p in self.processes.get(rid,[]) if p.returncode is None]
